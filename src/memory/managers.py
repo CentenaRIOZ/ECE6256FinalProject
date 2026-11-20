@@ -9,6 +9,7 @@ lifecycle       summary + typed ledger with deterministic lifecycle reducer (our
 lifecycle_gold  same, from gold events (gold-state intervention / extraction upper bound)
 abl_noguard     lifecycle without guard logic (any approval triggers)
 abl_noreceipt   lifecycle without tool-success evidence (any attempt completes)
+lifecycle_strict  POST-HOC variant: hedges only from explicit `ambiguous` events (not from approval flags)
 """
 from __future__ import annotations
 
@@ -18,9 +19,10 @@ from src.extraction.extractor import fmt_turn
 from src.ledger.reducer import Reducer, ReducerConfig, render_item, status_label
 
 CONDITIONS = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold",
-              "abl_noguard", "abl_noreceipt"]
+              "abl_noguard", "abl_noreceipt", "lifecycle_strict"]
 REDUCER_CONDS = {"lifecycle": ReducerConfig(), "lifecycle_gold": ReducerConfig(),
-                 "abl_noguard": ReducerConfig(guard_logic=False), "abl_noreceipt": ReducerConfig(receipt_logic=False)}
+                 "abl_noguard": ReducerConfig(guard_logic=False), "abl_noreceipt": ReducerConfig(receipt_logic=False),
+                 "lifecycle_strict": ReducerConfig(hedge_from_flags=False)}
 LEDGER_CONDS = set(REDUCER_CONDS) | {"typed_llm"}
 
 SUMMARY_SYSTEM = ("You compress a conversation between a user and their workplace assistant so the assistant can continue "

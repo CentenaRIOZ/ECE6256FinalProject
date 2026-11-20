@@ -15,15 +15,15 @@ import pandas as pd
 from src.eval.extraction_eval import ev_key, evaluate as extraction_eval
 
 COND_ORDER = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold", "abl_noguard",
-              "abl_noreceipt"]
+              "abl_noreceipt", "lifecycle_strict"]
 COND_NAME = {"full": "Full history (no compaction)", "summary": "Ordinary compaction", "pinning": "Constraint pinning",
              "chrono": "Chronological event ledger", "typed_llm": "Typed ledger, LLM transitions",
              "lifecycle": "Lifecycle ledger (ours)", "lifecycle_gold": "Lifecycle ledger, gold events",
-             "abl_noguard": "Ours - guard logic", "abl_noreceipt": "Ours - receipt evidence"}
+             "abl_noguard": "Ours - guard logic", "abl_noreceipt": "Ours - receipt evidence", "lifecycle_strict": "Ours, strict hedging (post-hoc)"}
 MAIN = ["summary", "pinning", "chrono", "typed_llm", "lifecycle"]
 COLORS = {"summary": "#2a78d6", "pinning": "#eb6834", "chrono": "#1baf7a", "typed_llm": "#eda100",
           "lifecycle": "#e87ba4", "lifecycle_gold": "#008300", "full": "#898781",
-          "abl_noguard": "#6250d6", "abl_noreceipt": "#e34948"}
+          "abl_noguard": "#6250d6", "abl_noreceipt": "#e34948", "lifecycle_strict": "#6250d6"}
 MARKERS = {"summary": "o", "pinning": "s", "chrono": "^", "typed_llm": "D", "lifecycle": "*", "full": "x",
            "lifecycle_gold": "P"}
 
@@ -141,7 +141,7 @@ def setup_mpl():
 
 def fig_main(summ: pd.DataFrame, out: Path):
     plt = setup_mpl()
-    models = list(summ.model.unique())
+    models = sorted(summ.model.unique(), key=lambda m: not m.startswith("Qwen"))
     conds = [c for c in COND_ORDER if c in set(summ.condition) and not c.startswith("abl")]
     fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models), 2.9), sharey=True, squeeze=False)
     for ax, mdl in zip(axes[0], models):
@@ -168,8 +168,8 @@ def fig_main(summ: pd.DataFrame, out: Path):
 
 def fig_decay(df: pd.DataFrame, out: Path):
     plt = setup_mpl()
-    models = list(df.model.unique())
-    fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models), 2.6), sharey=True, squeeze=False)
+    models = sorted(df.model.unique(), key=lambda m: not m.startswith("Qwen"))
+    fig, axes = plt.subplots(1, len(models), figsize=(6.8, 2.7), sharey=True, squeeze=False)
     df = df.assign(bucket=df.compactions_since_last_transition.clip(upper=3))
     conds = [c for c in ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle"] if c in set(df.condition)]
     for ax, mdl in zip(axes[0], models):
@@ -182,8 +182,9 @@ def fig_decay(df: pd.DataFrame, out: Path):
         ax.set_xlabel("Compactions since the item's last state change")
         ax.set_title(mdl, fontsize=9)
     axes[0][0].set_ylabel("Action accuracy")
-    axes[0][-1].legend(fontsize=7, loc="lower left", bbox_to_anchor=(1.0, 0.0))
-    fig.tight_layout()
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, fontsize=7, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0))
+    fig.tight_layout(rect=(0, 0.17, 1, 1))
     fig.savefig(out / "fig_decay.pdf")
     fig.savefig(out / "fig_decay.png", dpi=200)
     plt.close(fig)
@@ -191,7 +192,7 @@ def fig_decay(df: pd.DataFrame, out: Path):
 
 def fig_errors(summ: pd.DataFrame, out: Path):
     plt = setup_mpl()
-    models = list(summ.model.unique())
+    models = sorted(summ.model.unique(), key=lambda m: not m.startswith("Qwen"))
     mets = ["violation", "over_restriction", "premature", "duplicate"]
     conds = [c for c in ["full"] + MAIN if c in set(summ.condition)]
     fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models), 2.6), sharey=True, squeeze=False)
@@ -300,7 +301,8 @@ def main():
     report.append("| Model | Baseline | metric | diff (pp) | 95% CI | p |\n|---|---|---|---|---|---|")
     pair_rows = []
     for mdl, d in df.groupby("model"):
-        for b in ["summary", "pinning", "chrono", "typed_llm", "full", "abl_noguard", "abl_noreceipt", "lifecycle_gold"]:
+        for b in ["summary", "pinning", "chrono", "typed_llm", "full", "abl_noguard", "abl_noreceipt", "lifecycle_gold",
+                  "lifecycle_strict"]:
             if b not in set(d.condition):
                 continue
             for name in ["accuracy", "violation", "over_restriction", "premature", "duplicate"]:

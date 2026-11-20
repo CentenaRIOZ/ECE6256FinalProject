@@ -52,6 +52,8 @@ class ItemState:
 class ReducerConfig:
     guard_logic: bool = True     # ablation: False -> any approval triggers a waiting commitment
     receipt_logic: bool = True   # ablation: False -> any tool result (even failure) completes it
+    hedge_from_flags: bool = True  # False (post-hoc variant): a non-explicit approval just leaves the guard unmet;
+                                   # clarification flags come only from explicit `ambiguous` events
 
 
 class Reducer:
@@ -134,7 +136,7 @@ class Reducer:
             if not self.cfg.guard_logic or (explicit and matches):
                 it.status, it.unclear = "ready", False
                 self._log(it, turn, op, before, f"guard satisfied by: {ev.get('object', '')}")
-            elif not explicit:
+            elif not explicit and self.cfg.hedge_from_flags:
                 it.unclear = True
                 self._log(it, turn, op, before, f"non-explicit approval of {ev.get('object', '')}: needs clarification")
             else:

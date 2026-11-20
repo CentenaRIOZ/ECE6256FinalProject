@@ -38,7 +38,7 @@ def main():
     print(t.pivot_table(index=["model", "condition"], columns="budget", values="accuracy").round(3).to_markdown())
 
     plt = setup_mpl()
-    models = list(t.model.unique())
+    models = sorted(t.model.unique(), key=lambda m: not m.startswith("Qwen"))
     fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models), 2.6), sharey=True, squeeze=False)
     for ax, mdl in zip(axes[0], models):
         for c, d in t[t.model == mdl].groupby("condition"):

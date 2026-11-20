@@ -18,7 +18,7 @@ from src.llm.client import LLM, TokenCounter
 from src.memory.managers import CONDITIONS, LEDGER_CONDS, Memory
 from src.policy.policy import decide, state_query
 
-NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt"}
+NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict"}
 
 
 def load_dialogues(path: str, split: str | None, limit: int | None) -> list[dict]:

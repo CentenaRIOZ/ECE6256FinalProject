@@ -10,7 +10,7 @@ def ev_key(ev: dict, tool: str | None) -> tuple:
     op = ev["op"]
     k = (op, tool)
     if op == "approve":
-        k += (bool(ev.get("explicit", True)) and bool(ev.get("matches_guard", True)),)
+        k += (bool(ev.get("explicit", True)), bool(ev.get("matches_guard", True)))
     if op == "tool_result":
         k += (bool(ev.get("success")),)
     if op == "commit":

@@ -1,0 +1,61 @@
+{
+ "config": {
+  "run_name": "qwen2.5-7b",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "base_url": "http://localhost:8000/v1",
+  "data": "data/dialogues/dialogues.jsonl",
+  "split": "test",
+  "budget": 384,
+  "out_dir": "results/runs",
+  "cache": "cache/llm_qwen7b.sqlite",
+  "max_concurrency": 384,
+  "conditions": [
+   "full",
+   "summary",
+   "pinning",
+   "chrono",
+   "typed_llm",
+   "lifecycle",
+   "lifecycle_gold",
+   "abl_noguard",
+   "abl_noreceipt"
+  ]
+ },
+ "conditions": [
+  "lifecycle_strict"
+ ],
+ "budget": 384,
+ "n_dialogues": 144,
+ "wall_seconds": 45.894261598587036,
+ "gpu": "NVIDIA RTX 6000 Ada Generation, 49140 MiB\nNVIDIA RTX 6000 Ada Generation, 49140 MiB",
+ "usage": {
+  "extract": {
+   "calls": 2337.0,
+   "cached": 2337.0,
+   "prompt_tokens": 3034007.0,
+   "completion_tokens": 44118.0,
+   "latency": 5967.449685905129
+  },
+  "summary": {
+   "calls": 396.0,
+   "cached": 381.0,
+   "prompt_tokens": 134125.0,
+   "completion_tokens": 38284.0,
+   "latency": 7216.809493386187
+  },
+  "policy": {
+   "calls": 664.0,
+   "cached": 626.0,
+   "prompt_tokens": 635167.0,
+   "completion_tokens": 31510.0,
+   "latency": 6233.432206206955
+  },
+  "state_query": {
+   "calls": 664.0,
+   "cached": 626.0,
+   "prompt_tokens": 397522.0,
+   "completion_tokens": 5471.0,
+   "latency": 1486.6299134199508
+  }
+ }
+}

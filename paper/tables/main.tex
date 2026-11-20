@@ -1,0 +1,19 @@
+\begin{tabular}{lrrrrrr}
+\toprule
+ & \multicolumn{3}{c}{Qwen2.5-7B} & \multicolumn{3}{c}{Llama-3.1-8B} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Condition & Acc. & 95\% CI & State & Acc. & 95\% CI & State \\
+\midrule
+Full history (no compaction) & 60.4 & [55.2, 64.9] & 73.5 & 81.6 & [77.9, 84.8] & 76.1 \\
+Ordinary compaction & 60.1 & [56.3, 63.7] & 64.5 & 73.5 & [70.2, 76.7] & 64.6 \\
+Constraint pinning & 64.2 & [59.5, 68.5] & 67.9 & 66.4 & [62.9, 70.2] & 63.3 \\
+Chronological event ledger & 69.9 & [66.4, 73.3] & 73.9 & \textbf{77.0} & [72.4, 81.2] & 67.5 \\
+Typed ledger, LLM transitions & 69.1 & [64.6, 73.4] & 72.7 & 69.4 & [65.0, 73.9] & 70.0 \\
+Lifecycle ledger (\textit{ours}) & \textbf{76.4} & [72.7, 80.2] & 87.8 & 71.1 & [66.1, 76.0] & 76.7 \\
+\midrule
+Lifecycle ledger, gold events & 83.1 & [80.0, 85.8] & 91.4 & 81.5 & [78.2, 84.3] & 83.4 \\
+Ours - guard logic & 74.5 & [70.7, 78.1] & 84.5 & 77.6 & [73.7, 81.5] & 77.3 \\
+Ours - receipt evidence & 74.7 & [70.8, 78.7] & 83.4 & 68.8 & [63.1, 74.4] & 72.4 \\
+Ours, strict hedging (post-hoc) & 76.1 & [72.4, 79.4] & 87.8 & 76.8 & [72.5, 81.1] & 76.7 \\
+\bottomrule
+\end{tabular}
