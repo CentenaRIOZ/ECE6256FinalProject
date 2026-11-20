@@ -1,0 +1,114 @@
+{
+ "timeline_id": "T22",
+ "primary_family": "DONE3",
+ "primary_category": "completion",
+ "secondary_family": "COND3",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE3",
+   "category": "completion",
+   "action_id": "A18",
+   "tool": "publish_post",
+   "target": "platform=company blog; title=hiring update",
+   "vp": "publish the hiring update on the company blog",
+   "noun": "the hiring blog post",
+   "artifact": "hiring update post",
+   "partials": [
+    "intro",
+    "list of open roles",
+    "header image"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND3",
+   "category": "conditional",
+   "action_id": "A06",
+   "tool": "post_message",
+   "target": "channel=#general; text=launch announcement",
+   "vp": "post the launch announcement in #general",
+   "noun": "the launch announcement",
+   "artifact": "launch announcement",
+   "partials": [
+    "headline",
+    "first paragraph",
+    "emoji choice"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A01",
+   "tool": "send_email",
+   "target": "to=the board; subject=investor update",
+   "vp": "send the investor update to the board",
+   "noun": "the investor update",
+   "artifact": "investor update",
+   "partials": [
+    "opening paragraph",
+    "metrics table",
+    "first draft"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_ambig",
+   "F1C"
+  ],
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "clarify"
+  ],
+  [
+   "approve_final",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "retry_ok",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

@@ -1,0 +1,100 @@
+{
+ "timeline_id": "T04",
+ "primary_family": "DONE2",
+ "primary_category": "completion",
+ "secondary_family": "COND2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "A00",
+   "tool": "send_email",
+   "target": "to=Dana Whitfield; subject=Q3 budget report",
+   "vp": "email the Q3 budget report to Dana Whitfield",
+   "noun": "the Q3 budget report",
+   "artifact": "Q3 budget report",
+   "partials": [
+    "outline",
+    "executive summary",
+    "revenue chart"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "A19",
+   "tool": "publish_post",
+   "target": "platform=LinkedIn; title=product teaser",
+   "vp": "publish the product teaser on LinkedIn",
+   "noun": "the LinkedIn teaser",
+   "artifact": "product teaser",
+   "partials": [
+    "tagline",
+    "teaser video thumbnail",
+    "first sentence"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A05",
+   "tool": "share_file",
+   "target": "file=architecture doc; recipient=Northwind contractors",
+   "vp": "share the architecture doc with the Northwind contractors",
+   "noun": "the architecture doc",
+   "artifact": "architecture doc",
+   "partials": [
+    "system diagram",
+    "intro section",
+    "API chapter"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ]
+ ],
+ "split": "dev"
+}

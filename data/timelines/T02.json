@@ -1,0 +1,110 @@
+{
+ "timeline_id": "T02",
+ "primary_family": "COND1",
+ "primary_category": "conditional",
+ "secondary_family": "DONE2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND1",
+   "category": "conditional",
+   "action_id": "A09",
+   "tool": "book_meeting",
+   "target": "with=Horizon Labs; topic=contract review",
+   "vp": "book the contract review with Horizon Labs",
+   "noun": "the Horizon Labs contract review",
+   "artifact": "contract review agenda",
+   "partials": [
+    "agenda outline",
+    "first two agenda items",
+    "list of attendees"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "A06",
+   "tool": "post_message",
+   "target": "channel=#general; text=launch announcement",
+   "vp": "post the launch announcement in #general",
+   "noun": "the launch announcement",
+   "artifact": "launch announcement",
+   "partials": [
+    "headline",
+    "first paragraph",
+    "emoji choice"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A19",
+   "tool": "publish_post",
+   "target": "platform=LinkedIn; title=product teaser",
+   "vp": "publish the product teaser on LinkedIn",
+   "noun": "the LinkedIn teaser",
+   "artifact": "product teaser",
+   "partials": [
+    "tagline",
+    "teaser video thumbnail",
+    "first sentence"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "approve_final",
+   "F0C"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

@@ -1,0 +1,109 @@
+{
+ "timeline_id": "T29",
+ "primary_family": "COND2",
+ "primary_category": "conditional",
+ "secondary_family": "DONE3",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "A11",
+   "tool": "book_meeting",
+   "target": "with=Lena Ortiz; topic=performance review",
+   "vp": "book the performance review with Lena Ortiz",
+   "noun": "Lena's performance review",
+   "artifact": "review packet",
+   "partials": [
+    "self-assessment summary",
+    "goals page",
+    "peer feedback section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE3",
+   "category": "completion",
+   "action_id": "A02",
+   "tool": "send_email",
+   "target": "to=Kenji Mori; subject=offer letter",
+   "vp": "email the offer letter to Kenji Mori",
+   "noun": "Kenji's offer letter",
+   "artifact": "offer letter",
+   "partials": [
+    "salary section",
+    "first page",
+    "benefits paragraph"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A07",
+   "tool": "post_message",
+   "target": "channel=#sales; text=pricing-change notice",
+   "vp": "post the pricing-change notice in #sales",
+   "noun": "the pricing-change notice",
+   "artifact": "pricing-change notice",
+   "partials": [
+    "wording of the intro",
+    "table of new prices",
+    "FAQ part"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "retry_ok",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

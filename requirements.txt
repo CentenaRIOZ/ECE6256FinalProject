@@ -1,0 +1,12 @@
+# Python 3.10+
+pydantic>=2.6
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+pyyaml>=6.0
+openai>=1.40        # async client for any OpenAI-compatible server (vLLM)
+transformers>=4.44  # tokenizer for budget counting
+matplotlib>=3.8
+pytest>=8.0
+# inference server (GPU node only)
+vllm>=0.6

@@ -1,0 +1,105 @@
+{
+ "timeline_id": "T01",
+ "primary_family": "DONE1",
+ "primary_category": "completion",
+ "secondary_family": "CANC1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE1",
+   "category": "completion",
+   "action_id": "A02",
+   "tool": "send_email",
+   "target": "to=Kenji Mori; subject=offer letter",
+   "vp": "email the offer letter to Kenji Mori",
+   "noun": "Kenji's offer letter",
+   "artifact": "offer letter",
+   "partials": [
+    "salary section",
+    "first page",
+    "benefits paragraph"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "A16",
+   "tool": "make_payment",
+   "target": "payee=Sam Reyes; amount=$5,000",
+   "vp": "pay Sam Reyes the $5,000 contractor fee",
+   "noun": "Sam's contractor payment",
+   "artifact": "timesheet from Sam Reyes",
+   "partials": [
+    "first week",
+    "hourly rate",
+    "overtime entries"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A12",
+   "tool": "place_order",
+   "target": "item=40 office chairs; vendor=Ergodesk",
+   "vp": "order the 40 office chairs from Ergodesk",
+   "noun": "the Ergodesk chair order",
+   "artifact": "furniture quote",
+   "partials": [
+    "chair model choice",
+    "color options",
+    "delivery section"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "do_now_ok",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "cancel",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "approve_final_archive",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

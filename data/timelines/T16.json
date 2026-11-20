@@ -1,0 +1,100 @@
+{
+ "timeline_id": "T16",
+ "primary_family": "DONE1",
+ "primary_category": "completion",
+ "secondary_family": "COND2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE1",
+   "category": "completion",
+   "action_id": "A01",
+   "tool": "send_email",
+   "target": "to=the board; subject=investor update",
+   "vp": "send the investor update to the board",
+   "noun": "the investor update",
+   "artifact": "investor update",
+   "partials": [
+    "opening paragraph",
+    "metrics table",
+    "first draft"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "A05",
+   "tool": "share_file",
+   "target": "file=architecture doc; recipient=Northwind contractors",
+   "vp": "share the architecture doc with the Northwind contractors",
+   "noun": "the architecture doc",
+   "artifact": "architecture doc",
+   "partials": [
+    "system diagram",
+    "intro section",
+    "API chapter"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A08",
+   "tool": "post_message",
+   "target": "channel=#engineering; text=outage postmortem",
+   "vp": "post the outage postmortem in #engineering",
+   "noun": "the outage postmortem",
+   "artifact": "outage postmortem",
+   "partials": [
+    "timeline section",
+    "root-cause section",
+    "action items list"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "do_now_ok",
+   "F0C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ]
+ ],
+ "split": "dev"
+}
