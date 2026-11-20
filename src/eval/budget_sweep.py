@@ -39,7 +39,7 @@ def main():
 
     plt = setup_mpl()
     models = sorted(t.model.unique(), key=lambda m: not m.startswith("Qwen"))
-    fig, axes = plt.subplots(1, len(models), figsize=(3.4 * len(models), 2.6), sharey=True, squeeze=False)
+    fig, axes = plt.subplots(1, len(models), figsize=(6.8, 3.0), sharey=True, squeeze=False)
     for ax, mdl in zip(axes[0], models):
         for c, d in t[t.model == mdl].groupby("condition"):
             ax.errorbar(d.budget, d.accuracy, yerr=[d.accuracy - d.lo, d.hi - d.accuracy], marker=MARKERS[c],
@@ -49,8 +49,9 @@ def main():
         ax.set_xlabel("Memory budget B (tokens)")
         ax.set_title(mdl, fontsize=9)
     axes[0][0].set_ylabel("Action accuracy")
-    axes[0][-1].legend(fontsize=7, loc="lower left", bbox_to_anchor=(1.0, 0.0))
-    fig.tight_layout()
+    h, l = axes[0][0].get_legend_handles_labels()
+    fig.legend(h, l, fontsize=7, loc="lower center", ncol=3, bbox_to_anchor=(0.5, 0.0))
+    fig.tight_layout(rect=(0, 0.17, 1, 1))
     (out / "figures").mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "figures" / "fig_budget.pdf")
     fig.savefig(out / "figures" / "fig_budget.png", dpi=200)

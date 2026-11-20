@@ -57,6 +57,20 @@ Ablations: transition logic, tool-success evidence, compaction count and locatio
 - **Ziyan Fan:** compaction/pinning baselines, PACE-ICE
 - **Xiuping Zhu:** evaluation harness, statistics, error analysis, reproducibility
 
+## Results (test split, 664 probes, B=384)
+Full report: [`results/report_B384.md`](results/report_B384.md). Paper: [`paper/main.pdf`](paper/main.pdf). Poster: [`poster/poster.pdf`](poster/poster.pdf).
+
+| Condition | Qwen2.5-7B acc. | Llama-3.1-8B acc. |
+|---|---|---|
+| Full history (reference) | 60.4 | 81.6 |
+| Ordinary compaction | 60.1 | 73.5 |
+| Constraint pinning | 64.2 | 66.4 |
+| Chronological event ledger | 69.9 | **77.0** |
+| Typed ledger, LLM transitions | 69.1 | 69.4 |
+| **Lifecycle ledger (ours)** | **76.4** | 71.1 |
+| Ours, gold events | 83.1 | 81.5 |
+| Ours, strict hedging (post hoc) | 76.1 | 76.8 |
+
 ## Setup
 ```bash
 conda activate index            # or: pip install -r requirements.txt  (Python 3.10+)
