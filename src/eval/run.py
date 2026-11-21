@@ -18,7 +18,8 @@ from src.llm.client import LLM, TokenCounter
 from src.memory.managers import CONDITIONS, LEDGER_CONDS, Memory
 from src.policy.policy import decide, state_query
 
-NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict"}
+NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict",
+                    "lifecycle_nohint"}
 
 
 def load_dialogues(path: str, split: str | None, limit: int | None) -> list[dict]:
@@ -28,8 +29,8 @@ def load_dialogues(path: str, split: str | None, limit: int | None) -> list[dict
     return ds[:limit] if limit else ds
 
 
-async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events) -> list[dict]:
-    mem = Memory(cond, dlg, llm, tc, budget, events)
+async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events, hard_cap: bool = False) -> list[dict]:
+    mem = Memory(cond, dlg, llm, tc, budget, events, hard_cap=hard_cap)
     comp = set(dlg["compaction_after"])
     by_t: dict[int, list] = {}
     for p in dlg["probes"]:
@@ -50,7 +51,8 @@ async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events) -> list[di
                 **{k: v for k, v in p.items() if k not in ("gold_statuses",)},
                 tool=item["tool"], pred_decision=d["decision"], pred_reason=d["reason"], pred_label=s,
                 ledger_label=led_label, ledger_item=led_item, ledger_truncated=ctx["truncated"],
-                memory_tokens=ctx["memory_tokens"], prompt_tokens=d["prompt_tokens"], latency=d["latency"],
+                memory_tokens=ctx["memory_tokens"], summary_capped=ctx["summary_capped"],
+                prompt_tokens=d["prompt_tokens"], latency=d["latency"],
                 summary=mem.summary if p is dlg["probes"][-1] else None,
             ))
     return rows
@@ -72,7 +74,8 @@ async def main_async(args):
     out = Path(cfg["out_dir"]) / (args.run_name or cfg["run_name"])
     out.mkdir(parents=True, exist_ok=True)
     dlgs = load_dialogues(args.data or cfg["data"], args.split or cfg.get("split"), args.limit)
-    llm = LLM(cfg["model"], cfg["base_url"], cfg.get("cache", "cache/llm.sqlite"), cfg.get("max_concurrency", 128))
+    llm = LLM(cfg["model"], cfg["base_url"], args.cache or cfg.get("cache", "cache/llm.sqlite"),
+              cfg.get("max_concurrency", 128))
     tc = TokenCounter(cfg.get("tokenizer", cfg["model"]))
     budget = int(args.budget or cfg["budget"])
     t0 = time.time()
@@ -101,7 +104,7 @@ async def main_async(args):
             ev = gold_events(d)
         else:
             ev = None
-        rows = await run_one(cond, d, llm, tc, budget, ev)
+        rows = await run_one(cond, d, llm, tc, budget, ev, hard_cap=args.hard_cap)
         done += 1
         if done % 50 == 0 or done == total:
             print(f"[run] {done}/{total} dialogue-conditions ({time.time() - t0:.0f}s)", flush=True)
@@ -113,7 +116,8 @@ async def main_async(args):
             for r in rows:
                 f.write(json.dumps(r) + "\n")
     llm.close()
-    meta = dict(config=cfg, conditions=conds, budget=budget, n_dialogues=len(dlgs), wall_seconds=time.time() - t0,
+    meta = dict(config=cfg, conditions=conds, budget=budget, hard_cap=args.hard_cap, n_dialogues=len(dlgs),
+                wall_seconds=time.time() - t0,
                 gpu=gpu_info(), usage={k: dict(v) for k, v in llm.stats.items()})
     (out / f"meta_B{budget}.json").write_text(json.dumps(meta, indent=1))
     print(f"wrote {probes_path} ({sum(map(len, results))} rows) in {time.time() - t0:.0f}s")
@@ -128,6 +132,8 @@ def main():
     ap.add_argument("--data")
     ap.add_argument("--budget", type=int)
     ap.add_argument("--run-name")
+    ap.add_argument("--cache", help="override the config's LLM cache path")
+    ap.add_argument("--hard-cap", action="store_true", help="enforce summary + persistent block <= budget at every probe")
     asyncio.run(main_async(ap.parse_args()))
 
 

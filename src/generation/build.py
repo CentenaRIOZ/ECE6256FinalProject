@@ -1,6 +1,10 @@
 """Gold timelines -> rendered multi-turn dialogues with gold states and permissible actions.
 
 python -m src.generation.build --out data --n-timelines 48 --seed 0
+python -m src.generation.build --fresh --out data/fresh --n-per-family 4 --seed 20261121
+
+--fresh builds new test timelines balanced over the 13 primary families, without paraphrases. The same dialogues
+are written with compaction points spread over the dialogue, confined to its first half, or to its second half.
 """
 from __future__ import annotations
 
@@ -48,6 +52,7 @@ CATEGORY_FAMILIES = {
 }
 VARIANT_COMPACTIONS = [1, 2, 3, 5]
 PARAPHRASE_VARIANTS = {1, 3}
+PLACEMENTS = ("spread", "early", "late")
 
 
 def slot_type(kind: str) -> str:
@@ -55,11 +60,15 @@ def slot_type(kind: str) -> str:
 
 
 # --------------------------------------------------------------------------- timelines
-def make_timeline(idx: int, rng: random.Random) -> dict:
+def make_timeline(idx: int, rng: random.Random, primary: str | None = None, timeline_id: str | None = None,
+                  split: str | None = None) -> dict:
     cats = list(CATEGORY_FAMILIES)
-    primary_cat = cats[idx % 3]
-    fams = CATEGORY_FAMILIES[primary_cat]
-    primary = fams[(idx // 3) % len(fams)]
+    if primary is None:
+        primary_cat = cats[idx % 3]
+        fams = CATEGORY_FAMILIES[primary_cat]
+        primary = fams[(idx // 3) % len(fams)]
+    else:
+        primary_cat = FAMILIES[primary][0]
     secondary_cat = rng.choice([c for c in cats if c != primary_cat])
     secondary = rng.choice(CATEGORY_FAMILIES[secondary_cat])
     parts = [("F0", primary), ("F1", secondary), ("F2", "STAT")]
@@ -96,15 +105,22 @@ def make_timeline(idx: int, rng: random.Random) -> dict:
         ptrs[i] += 1
     for it in items.values():  # mutable = any state change beyond creation
         it["mutable"] = not (it["family"] == "STAT" or (it["family"] == "REV4" and it["id"].endswith("Q")))
-    return dict(timeline_id=f"T{idx:02d}", primary_family=primary, primary_category=primary_cat,
+    return dict(timeline_id=timeline_id or f"T{idx:02d}", primary_family=primary, primary_category=primary_cat,
                 secondary_family=secondary, items=items, steps=merged,
-                split="dev" if idx % 4 == 0 else "test")
+                split=split or ("dev" if idx % 4 == 0 else "test"))
+
+
+def fresh_timelines(n_per_family: int, seed: int) -> list[dict]:
+    rng = random.Random(seed)
+    families = [f for fams in CATEGORY_FAMILIES.values() for f in fams]
+    return [make_timeline(i, rng, primary=families[i % len(families)], timeline_id=f"F{i:02d}", split="test")
+            for i in range(n_per_family * len(families))]
 
 
 # --------------------------------------------------------------------------- rendering
 class Renderer:
-    def __init__(self, tl: dict, variant: int, seed: int):
-        self.tl, self.variant = tl, variant
+    def __init__(self, tl: dict, variant: int, seed: int, placement: str = "spread"):
+        self.tl, self.variant, self.placement = tl, variant, placement
         self.rng = random.Random(f"{seed}-{tl['timeline_id']}-{variant}")
         self.split = tl["split"]
         self.turns: list[dict] = []
@@ -217,7 +233,9 @@ class Renderer:
 
         k = VARIANT_COMPACTIONS[self.variant]
         cands = [t["idx"] for t in self.turns if t["role"] == "assistant" and 3 <= t["idx"] < len(self.turns) - 1]
-        chunks = [cands[i * len(cands) // k:(i + 1) * len(cands) // k] for i in range(k)]
+        half = len(cands) // 2
+        window = {"spread": cands, "early": cands[:half], "late": cands[half:]}[self.placement]
+        chunks = [window[i * len(window) // k:(i + 1) * len(window) // k] for i in range(k)]
         compactions = sorted({self.rng.choice(c) for c in chunks if c})
         return self.label(compactions)
 
@@ -261,8 +279,23 @@ def main():
     ap.add_argument("--out", default="data")
     ap.add_argument("--n-timelines", type=int, default=48)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--fresh", action="store_true")
+    ap.add_argument("--n-per-family", type=int, default=4)
     args = ap.parse_args()
     out = Path(args.out)
+    if args.fresh:
+        (out / "timelines").mkdir(parents=True, exist_ok=True)
+        timelines = fresh_timelines(args.n_per_family, args.seed)
+        for tl in timelines:
+            (out / "timelines" / f"{tl['timeline_id']}.json").write_text(json.dumps(tl, indent=1))
+        for placement in PLACEMENTS:
+            rendered = [Renderer(tl, v, args.seed, placement).render() for tl in timelines
+                        for v in range(len(VARIANT_COMPACTIONS))]
+            with (out / f"dialogues_{placement}.jsonl").open("w") as f:
+                for d in rendered:
+                    f.write(json.dumps(d) + "\n")
+            print(f"{placement}: {len(rendered)} dialogues, {sum(len(d['probes']) for d in rendered)} probes")
+        return
     (out / "timelines").mkdir(parents=True, exist_ok=True)
     (out / "dialogues").mkdir(parents=True, exist_ok=True)
     rng = random.Random(args.seed)

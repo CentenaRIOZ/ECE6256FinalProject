@@ -11,6 +11,13 @@ results/runs/*
 !results/runs/llama3.1-8b/
 !results/runs/qwen2.5-7b-strict/
 !results/runs/llama3.1-8b-strict/
+!results/runs/qwen2.5-7b-pace-nocap/
+!results/runs/llama3.1-8b-pace-nocap/
+!results/runs/qwen2.5-7b-pace-hardcap/
+!results/runs/llama3.1-8b-pace-hardcap/
+!results/runs/*-pace-fresh-spread/
+!results/runs/*-pace-fresh-early/
+!results/runs/*-pace-fresh-late/
 paper/*.aux
 paper/*.log
 paper/*.bbl

@@ -1,0 +1,104 @@
+{
+ "timeline_id": "F08",
+ "primary_family": "COND5",
+ "primary_category": "completion",
+ "secondary_family": "COND2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND5",
+   "category": "completion",
+   "action_id": "A18",
+   "tool": "publish_post",
+   "target": "platform=company blog; title=hiring update",
+   "vp": "publish the hiring update on the company blog",
+   "noun": "the hiring blog post",
+   "artifact": "hiring update post",
+   "partials": [
+    "intro",
+    "list of open roles",
+    "header image"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "A13",
+   "tool": "place_order",
+   "target": "item=12 laptops; vendor=Dellmark",
+   "vp": "order the 12 laptops from Dellmark",
+   "noun": "the Dellmark laptop order",
+   "artifact": "laptop spec sheet",
+   "partials": [
+    "memory config",
+    "screen size choice",
+    "warranty section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A15",
+   "tool": "make_payment",
+   "target": "payee=Brightline Printing; amount=$2,400",
+   "vp": "pay the $2,400 Brightline Printing invoice",
+   "noun": "the Brightline invoice",
+   "artifact": "Brightline invoice",
+   "partials": [
+    "line items",
+    "tax line",
+    "shipping charge"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "approve_final_exec_fail",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ]
+ ],
+ "split": "test"
+}

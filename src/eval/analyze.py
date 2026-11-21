@@ -15,15 +15,17 @@ import pandas as pd
 from src.eval.extraction_eval import ev_key, evaluate as extraction_eval
 
 COND_ORDER = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold", "abl_noguard",
-              "abl_noreceipt", "lifecycle_strict"]
-COND_NAME = {"full": "Full history (no compaction)", "summary": "Ordinary compaction", "pinning": "Constraint pinning",
+              "abl_noreceipt", "lifecycle_strict", "lifecycle_nohint"]
+COND_NAME = {"lifecycle_nohint": "Ours - action hints",
+"full": "Full history (no compaction)", "summary": "Ordinary compaction", "pinning": "Constraint pinning",
              "chrono": "Chronological event ledger", "typed_llm": "Typed ledger, LLM transitions",
              "lifecycle": "Lifecycle ledger (ours)", "lifecycle_gold": "Lifecycle ledger, gold events",
              "abl_noguard": "Ours - guard logic", "abl_noreceipt": "Ours - receipt evidence", "lifecycle_strict": "Ours, strict hedging (post-hoc)"}
 MAIN = ["summary", "pinning", "chrono", "typed_llm", "lifecycle"]
 COLORS = {"summary": "#2a78d6", "pinning": "#eb6834", "chrono": "#1baf7a", "typed_llm": "#eda100",
           "lifecycle": "#e87ba4", "lifecycle_gold": "#008300", "full": "#898781",
-          "abl_noguard": "#6250d6", "abl_noreceipt": "#e34948", "lifecycle_strict": "#6250d6"}
+          "abl_noguard": "#6250d6", "abl_noreceipt": "#e34948", "lifecycle_strict": "#6250d6",
+          "lifecycle_nohint": "#b5507a"}
 MARKERS = {"summary": "o", "pinning": "s", "chrono": "^", "typed_llm": "D", "lifecycle": "*", "full": "x",
            "lifecycle_gold": "P"}
 
@@ -302,7 +304,7 @@ def main():
     pair_rows = []
     for mdl, d in df.groupby("model"):
         for b in ["summary", "pinning", "chrono", "typed_llm", "full", "abl_noguard", "abl_noreceipt", "lifecycle_gold",
-                  "lifecycle_strict"]:
+                  "lifecycle_strict", "lifecycle_nohint"]:
             if b not in set(d.condition):
                 continue
             for name in ["accuracy", "violation", "over_restriction", "premature", "duplicate"]:

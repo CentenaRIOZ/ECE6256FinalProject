@@ -1,0 +1,101 @@
+{
+ "timeline_id": "F39",
+ "primary_family": "REV1",
+ "primary_category": "revocation",
+ "secondary_family": "DONE2",
+ "items": {
+  "F0P": {
+   "id": "F0P",
+   "family": "REV1",
+   "category": "revocation",
+   "action_id": "A04",
+   "tool": "share_file",
+   "target": "file=salary spreadsheet; recipient=Marco Bellini",
+   "vp": "share the salary spreadsheet with Marco Bellini",
+   "noun": "the salary spreadsheet",
+   "artifact": "salary spreadsheet",
+   "partials": [
+    "engineering tab",
+    "formatting",
+    "summary row"
+   ],
+   "type": "prohibition",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "A15",
+   "tool": "make_payment",
+   "target": "payee=Brightline Printing; amount=$2,400",
+   "vp": "pay the $2,400 Brightline Printing invoice",
+   "noun": "the Brightline invoice",
+   "artifact": "Brightline invoice",
+   "partials": [
+    "line items",
+    "tax line",
+    "shipping charge"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A14",
+   "tool": "place_order",
+   "target": "item=all-hands catering; vendor=Green Fork",
+   "vp": "order the all-hands catering from Green Fork",
+   "noun": "the Green Fork catering order",
+   "artifact": "catering menu",
+   "partials": [
+    "dessert list",
+    "vegetarian options",
+    "drinks section"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F0P"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0P",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "revoke",
+   "F0P"
+  ],
+  [
+   "probe",
+   "F0P",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

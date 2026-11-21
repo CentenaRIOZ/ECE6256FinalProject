@@ -1,0 +1,105 @@
+{
+ "timeline_id": "F21",
+ "primary_family": "COND5",
+ "primary_category": "completion",
+ "secondary_family": "REV1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND5",
+   "category": "completion",
+   "action_id": "A16",
+   "tool": "make_payment",
+   "target": "payee=Sam Reyes; amount=$5,000",
+   "vp": "pay Sam Reyes the $5,000 contractor fee",
+   "noun": "Sam's contractor payment",
+   "artifact": "timesheet from Sam Reyes",
+   "partials": [
+    "first week",
+    "hourly rate",
+    "overtime entries"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1P": {
+   "id": "F1P",
+   "family": "REV1",
+   "category": "revocation",
+   "action_id": "A02",
+   "tool": "send_email",
+   "target": "to=Kenji Mori; subject=offer letter",
+   "vp": "email the offer letter to Kenji Mori",
+   "noun": "Kenji's offer letter",
+   "artifact": "offer letter",
+   "partials": [
+    "salary section",
+    "first page",
+    "benefits paragraph"
+   ],
+   "type": "prohibition",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A14",
+   "tool": "place_order",
+   "target": "item=all-hands catering; vendor=Green Fork",
+   "vp": "order the all-hands catering from Green Fork",
+   "noun": "the Green Fork catering order",
+   "artifact": "catering menu",
+   "partials": [
+    "dessert list",
+    "vegetarian options",
+    "drinks section"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "approve_final_exec_fail",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F1P"
+  ],
+  [
+   "probe",
+   "F1P",
+   "decline"
+  ],
+  [
+   "revoke",
+   "F1P"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1P",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

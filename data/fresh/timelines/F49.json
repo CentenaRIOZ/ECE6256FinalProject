@@ -1,0 +1,100 @@
+{
+ "timeline_id": "F49",
+ "primary_family": "COND2",
+ "primary_category": "conditional",
+ "secondary_family": "DONE2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "A20",
+   "tool": "publish_post",
+   "target": "platform=newsroom; title=press release",
+   "vp": "publish the press release on the newsroom page",
+   "noun": "the press release",
+   "artifact": "press release",
+   "partials": [
+    "quote from the CEO",
+    "headline",
+    "boilerplate"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "A14",
+   "tool": "place_order",
+   "target": "item=all-hands catering; vendor=Green Fork",
+   "vp": "order the all-hands catering from Green Fork",
+   "noun": "the Green Fork catering order",
+   "artifact": "catering menu",
+   "partials": [
+    "dessert list",
+    "vegetarian options",
+    "drinks section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A09",
+   "tool": "book_meeting",
+   "target": "with=Horizon Labs; topic=contract review",
+   "vp": "book the contract review with Horizon Labs",
+   "noun": "the Horizon Labs contract review",
+   "artifact": "contract review agenda",
+   "partials": [
+    "agenda outline",
+    "first two agenda items",
+    "list of attendees"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

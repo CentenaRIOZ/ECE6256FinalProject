@@ -59,6 +59,7 @@ Ablations: transition logic, tool-success evidence, compaction count and locatio
 
 ## Results (test split, 664 probes, B=384)
 Full report: [`results/report_B384.md`](results/report_B384.md). Paper: [`paper/main.pdf`](paper/main.pdf). Poster: [`poster/poster.pdf`](poster/poster.pdf).
+PACE-ICE control experiments and their interpretation: [`docs/pace_experiments.md`](docs/pace_experiments.md).
 
 | Condition | Qwen2.5-7B acc. | Llama-3.1-8B acc. |
 |---|---|---|
@@ -95,6 +96,14 @@ Individual steps:
 | Extraction quality | `python -m src.eval.extraction_eval --extractions results/runs/<run>/extractions.jsonl` |
 | Tables + figures | `python -m src.eval.analyze --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b` |
 | Budget sweep | `python -m src.eval.budget_sweep --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b` |
+| Milestone tables | `python -m src.eval.milestone_tables --budget 384 --out paper/tables` |
+| PACE-ICE setup | `sbatch scripts/pace_setup.sbatch` (versions: `scripts/pace_env_freeze.txt`) |
+| PACE-ICE controls, no cap and hard cap | `sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml full`, then the same with `configs/llama8b.yaml` |
+| Control report | `python -m src.eval.control_report --budget 384 --out results/controls` |
+| RQ1 chance baseline and Holm tests | `python -m src.eval.robustness --runs results/runs/qwen2.5-7b-pace-hardcap results/runs/llama3.1-8b-pace-hardcap --budget 384 --out results/robustness` |
+| Fresh timelines and compaction placements | `python -m src.generation.build --fresh --out data/fresh --n-per-family 4 --seed 20261121` |
+| PACE-ICE budget, fresh-data, and placement runs | `sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml extended`, then the same with `configs/llama8b.yaml` |
+| Extended report | `python -m src.eval.extended_report --out results/extended` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.

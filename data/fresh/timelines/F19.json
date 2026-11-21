@@ -1,0 +1,114 @@
+{
+ "timeline_id": "F19",
+ "primary_family": "DONE3",
+ "primary_category": "completion",
+ "secondary_family": "CANC1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE3",
+   "category": "completion",
+   "action_id": "A11",
+   "tool": "book_meeting",
+   "target": "with=Lena Ortiz; topic=performance review",
+   "vp": "book the performance review with Lena Ortiz",
+   "noun": "Lena's performance review",
+   "artifact": "review packet",
+   "partials": [
+    "self-assessment summary",
+    "goals page",
+    "peer feedback section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "A13",
+   "tool": "place_order",
+   "target": "item=12 laptops; vendor=Dellmark",
+   "vp": "order the 12 laptops from Dellmark",
+   "noun": "the Dellmark laptop order",
+   "artifact": "laptop spec sheet",
+   "partials": [
+    "memory config",
+    "screen size choice",
+    "warranty section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A16",
+   "tool": "make_payment",
+   "target": "payee=Sam Reyes; amount=$5,000",
+   "vp": "pay Sam Reyes the $5,000 contractor fee",
+   "noun": "Sam's contractor payment",
+   "artifact": "timesheet from Sam Reyes",
+   "partials": [
+    "first week",
+    "hourly rate",
+    "overtime entries"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "cancel",
+   "F1C"
+  ],
+  [
+   "approve_final_archive",
+   "F1C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "retry_ok",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

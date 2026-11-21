@@ -1,0 +1,114 @@
+{
+ "timeline_id": "F32",
+ "primary_family": "DONE3",
+ "primary_category": "completion",
+ "secondary_family": "CANC1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE3",
+   "category": "completion",
+   "action_id": "A20",
+   "tool": "publish_post",
+   "target": "platform=newsroom; title=press release",
+   "vp": "publish the press release on the newsroom page",
+   "noun": "the press release",
+   "artifact": "press release",
+   "partials": [
+    "quote from the CEO",
+    "headline",
+    "boilerplate"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "A11",
+   "tool": "book_meeting",
+   "target": "with=Lena Ortiz; topic=performance review",
+   "vp": "book the performance review with Lena Ortiz",
+   "noun": "Lena's performance review",
+   "artifact": "review packet",
+   "partials": [
+    "self-assessment summary",
+    "goals page",
+    "peer feedback section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "A03",
+   "tool": "share_file",
+   "target": "file=pitch deck; recipient=Acme Corp",
+   "vp": "share the pitch deck with Acme Corp",
+   "noun": "the Acme pitch deck",
+   "artifact": "pitch deck",
+   "partials": [
+    "title slide",
+    "pricing slide",
+    "first half"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "retry_ok",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "cancel",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ],
+  [
+   "approve_final_archive",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

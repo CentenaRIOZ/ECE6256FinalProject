@@ -10,6 +10,9 @@ lifecycle_gold  same, from gold events (gold-state intervention / extraction upp
 abl_noguard     lifecycle without guard logic (any approval triggers)
 abl_noreceipt   lifecycle without tool-success evidence (any attempt completes)
 lifecycle_strict  POST-HOC variant: hedges only from explicit `ambiguous` events (not from approval flags)
+lifecycle_nohint  lifecycle state rendered without action directives such as "do NOT perform"
+
+With hard_cap=True, the summary is shortened whenever summary + persistent block would exceed B tokens.
 """
 from __future__ import annotations
 
@@ -19,10 +22,10 @@ from src.extraction.extractor import fmt_turn
 from src.ledger.reducer import Reducer, ReducerConfig, render_item, status_label
 
 CONDITIONS = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold",
-              "abl_noguard", "abl_noreceipt", "lifecycle_strict"]
+              "abl_noguard", "abl_noreceipt", "lifecycle_strict", "lifecycle_nohint"]
 REDUCER_CONDS = {"lifecycle": ReducerConfig(), "lifecycle_gold": ReducerConfig(),
                  "abl_noguard": ReducerConfig(guard_logic=False), "abl_noreceipt": ReducerConfig(receipt_logic=False),
-                 "lifecycle_strict": ReducerConfig(hedge_from_flags=False)}
+                 "lifecycle_strict": ReducerConfig(hedge_from_flags=False), "lifecycle_nohint": ReducerConfig()}
 LEDGER_CONDS = set(REDUCER_CONDS) | {"typed_llm"}
 
 SUMMARY_SYSTEM = ("You compress a conversation between a user and their workplace assistant so the assistant can continue "
@@ -73,8 +76,10 @@ def chrono_line(t: int, ev: dict) -> str:
 
 
 class Memory:
-    def __init__(self, cond: str, dlg: dict, llm, tc, budget: int, events: list[list[dict]] | None):
+    def __init__(self, cond: str, dlg: dict, llm, tc, budget: int, events: list[list[dict]] | None,
+                 hard_cap: bool = False):
         self.cond, self.dlg, self.llm, self.tc, self.B = cond, dlg, llm, tc, budget
+        self.hard_cap = hard_cap
         self.turns = dlg["turns"]
         self.events = events  # per-turn events (extracted or gold) for ledger/chrono conditions
         self.ledger_cap = int(0.6 * budget)
@@ -158,20 +163,40 @@ class Memory:
         if not items:
             return "STATE LEDGER: (no tracked constraints or commitments)", False
         rows = sorted(items.values(), key=lambda i: i["updated_turn"])
-        txt = self.tc.keep_lines_within(["- " + render_item(i) for i in rows], self.ledger_cap,
+        hints = self.cond != "lifecycle_nohint"
+        txt = self.tc.keep_lines_within(["- " + render_item(i, hints=hints) for i in rows], self.ledger_cap,
                                         header="STATE LEDGER (current status of the user's constraints and commitments):")
         return txt, "older entries dropped" in txt
+
+    def _compose(self, summary: str, blk: str) -> str:
+        parts = []
+        if self.last_compact >= 0:
+            parts.append(f"SUMMARY OF EARLIER CONVERSATION (turns 0-{self.last_compact}):\n{summary}")
+        if blk:
+            parts.append(blk)
+        return "\n\n".join(parts)
+
+    def _fit_summary(self, blk: str) -> str:
+        """Under the hard cap, shorten the summary until summary + persistent block fits in B tokens."""
+        if not self.hard_cap or self.last_compact < 0:
+            return self.summary
+        summary, n = self.summary, self.tc.count(self.summary)
+        while n > 0 and (over := self.tc.count(self._compose(summary, blk)) - self.B) > 0:
+            n = max(0, n - over)
+            summary = self.tc.truncate(self.summary, n)
+        return summary
 
     # ------------------------------------------------------------ compaction
     async def compact(self, t: int):
         if self.cond == "full":
             return
         blk, _ = self.block()
+        previous = self._fit_summary(blk)  # under the hard cap, compaction only sees memory the agent actually kept
         sum_budget = max(int(0.4 * self.B), self.B - self.tc.count(blk))
         new = "\n".join(fmt_turn(x) for x in self.turns[self.last_compact + 1:t + 1])
         r = await self.llm.chat([
             {"role": "system", "content": SUMMARY_SYSTEM.format(words=int(sum_budget * 0.7))},
-            {"role": "user", "content": f"Previous summary:\n{self.summary or '(none)'}\n\nNew conversation turns:\n{new}"
+            {"role": "user", "content": f"Previous summary:\n{previous or '(none)'}\n\nNew conversation turns:\n{new}"
                                         f"\n\nWrite the updated summary."}], tag="summary", max_tokens=sum_budget)
         self.summary = self.tc.truncate(r["text"].strip(), sum_budget)
         self.last_compact = t
@@ -180,17 +205,14 @@ class Memory:
     def context(self, t: int) -> dict:
         if self.cond == "full":
             raw = self.turns[:t + 1]
-            return dict(memory="", raw="\n".join(fmt_turn(x) for x in raw), memory_tokens=0, truncated=False)
+            return dict(memory="", raw="\n".join(fmt_turn(x) for x in raw), memory_tokens=0, truncated=False,
+                        summary_capped=False)
         blk, trunc = self.block()
-        parts = []
-        if self.last_compact >= 0:
-            parts.append(f"SUMMARY OF EARLIER CONVERSATION (turns 0-{self.last_compact}):\n{self.summary}")
-        if blk:
-            parts.append(blk)
-        mem = "\n\n".join(parts)
+        summary = self._fit_summary(blk)
+        mem = self._compose(summary, blk)
         raw = self.turns[self.last_compact + 1:t + 1]
         return dict(memory=mem, raw="\n".join(fmt_turn(x) for x in raw), memory_tokens=self.tc.count(mem),
-                    truncated=trunc)
+                    truncated=trunc, summary_capped=summary != self.summary)
 
     def ledger_label_for(self, gold_item: dict) -> tuple[str | None, dict | None]:
         """Status label of the ledger item aligned to a gold item (by tool; most recently updated)."""

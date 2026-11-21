@@ -1,0 +1,86 @@
+{
+ "config": {
+  "run_name": "llama3.1-8b",
+  "model": "meta-llama/Llama-3.1-8B-Instruct",
+  "base_url": "http://localhost:8001/v1",
+  "data": "data/dialogues/dialogues.jsonl",
+  "split": "test",
+  "budget": 384,
+  "out_dir": "results/runs",
+  "cache": "cache/llm_llama8b.sqlite",
+  "max_concurrency": 384,
+  "conditions": [
+   "full",
+   "summary",
+   "pinning",
+   "chrono",
+   "typed_llm",
+   "lifecycle",
+   "lifecycle_gold",
+   "abl_noguard",
+   "abl_noreceipt"
+  ]
+ },
+ "conditions": [
+  "full",
+  "summary",
+  "pinning",
+  "chrono",
+  "typed_llm",
+  "lifecycle",
+  "lifecycle_gold",
+  "abl_noguard",
+  "abl_noreceipt",
+  "lifecycle_strict",
+  "lifecycle_nohint"
+ ],
+ "budget": 384,
+ "hard_cap": true,
+ "n_dialogues": 208,
+ "wall_seconds": 426.7018220424652,
+ "gpu": "NVIDIA H200, 143771 MiB",
+ "usage": {
+  "extract": {
+   "calls": 3469.0,
+   "cached": 117.0,
+   "prompt_tokens": 4564380.0,
+   "completion_tokens": 66181.0,
+   "latency": 3230.5451822474133
+  },
+  "summary": {
+   "calls": 5720.0,
+   "cached": 287.0,
+   "prompt_tokens": 2188930.0,
+   "completion_tokens": 814069.0,
+   "latency": 55885.623532023514
+  },
+  "pin": {
+   "calls": 3469.0,
+   "cached": 123.0,
+   "prompt_tokens": 1044023.0,
+   "completion_tokens": 468985.0,
+   "latency": 19150.697544513736
+  },
+  "transition": {
+   "calls": 1367.0,
+   "cached": 59.0,
+   "prompt_tokens": 590942.0,
+   "completion_tokens": 125663.0,
+   "latency": 8909.251416040584
+  },
+  "policy": {
+   "calls": 10032.0,
+   "cached": 342.0,
+   "prompt_tokens": 10251622.0,
+   "completion_tokens": 767896.0,
+   "latency": 57394.781880375696
+  },
+  "state_query": {
+   "calls": 10032.0,
+   "cached": 370.0,
+   "prompt_tokens": 6660133.0,
+   "completion_tokens": 82824.0,
+   "latency": 7722.79463842744
+  }
+ }
+}

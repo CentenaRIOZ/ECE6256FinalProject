@@ -2,8 +2,9 @@ import json
 import random
 
 from src.extraction.extractor import Registry
-from src.generation.build import FAMILIES, Renderer, make_timeline
-from src.ledger.reducer import Reducer, ReducerConfig, gold_decision, label_history, status_label
+from src.generation.build import CATEGORY_FAMILIES, FAMILIES, Renderer, fresh_timelines, make_timeline
+from src.ledger.reducer import Reducer, ReducerConfig, gold_decision, label_history, render_item, status_label
+from src.memory.managers import Memory
 
 
 def item(r, iid):
@@ -86,3 +87,63 @@ def test_registry_resolution():
 def test_status_label():
     assert status_label(None) == "unknown"
     assert status_label(dict(status="ready", unclear=True)) == "needs_confirmation"
+
+
+def test_no_hint_render_keeps_state_without_directives():
+    r = Reducer()
+    r.apply(dict(op="prohibit", item="P", tool="send_email", target="report"), 1)
+    r.apply(dict(op="ambiguous", item="P"), 2)
+    r.apply(dict(op="commit", item="C", tool="share_file", target="deck"), 3)
+    r.apply(dict(op="tool_result", item="C", success=False), 4)
+    plain = render_item(item(r, "P"), hints=False) + render_item(item(r, "C"), hints=False)
+    assert "ACTIVE" in plain and "UNCLEAR" in plain and "READY" in plain and "1 failed attempt(s)" in plain
+    for directive in ("do NOT", "allowed", "perform", "ask the user", "still pending"):
+        assert directive not in plain
+    assert "do NOT perform" in render_item(item(r, "P"))
+
+
+class WordCounter:
+    def count(self, text):
+        return len(text.split())
+
+    def truncate(self, text, n):
+        return " ".join(text.split()[:n])
+
+    def keep_lines_within(self, lines, n, header=""):
+        return "\n".join([header, *lines])
+
+
+def _capped_memory(hard_cap):
+    tc = WordCounter()
+    dlg = {"turns": [{"idx": 0, "role": "user", "text": "x"}]}
+    mem = Memory("lifecycle", dlg, None, tc, 40, [[]], hard_cap=hard_cap)
+    mem.reducer.apply(dict(op="prohibit", item="P", tool="send_email", target="report"), 0)
+    mem.summary = " ".join(f"w{i}" for i in range(100))
+    mem.last_compact = 0
+    return mem, tc
+
+
+def test_hard_cap_limits_memory_and_keeps_ledger():
+    mem, tc = _capped_memory(hard_cap=True)
+    ctx = mem.context(0)
+    assert tc.count(ctx["memory"]) <= 40
+    assert ctx["summary_capped"] and "PROHIBITION" in ctx["memory"]
+
+
+def test_fresh_timelines_are_balanced_and_placement_only_moves_compactions():
+    timelines = fresh_timelines(2, 7)
+    families = [f for fams in CATEGORY_FAMILIES.values() for f in fams]
+    assert sorted(t["primary_family"] for t in timelines) == sorted(families * 2)
+    assert all(t["split"] == "test" and t["timeline_id"].startswith("F") for t in timelines)
+    for tl in timelines:
+        spread, early, late = (Renderer(tl, 3, 7, p).render() for p in ("spread", "early", "late"))
+        assert [t["text"] for t in spread["turns"]] == [t["text"] for t in early["turns"]] == [t["text"] for t in late["turns"]]
+        assert [p["gold_decision"] for p in spread["probes"]] == [p["gold_decision"] for p in late["probes"]]
+        assert max(early["compaction_after"]) < min(late["compaction_after"])
+
+
+def test_default_memory_is_unchanged_without_hard_cap():
+    mem, tc = _capped_memory(hard_cap=False)
+    ctx = mem.context(0)
+    assert mem.summary in ctx["memory"] and tc.count(ctx["memory"]) > 40
+    assert not ctx["summary_capped"]

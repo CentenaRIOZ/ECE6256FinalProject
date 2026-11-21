@@ -1,0 +1,12 @@
+vllm==0.34.0
+pydantic
+numpy
+pandas
+scipy
+pyyaml
+openai
+transformers
+huggingface_hub
+matplotlib
+tabulate
+pytest

@@ -230,16 +230,18 @@ STATUS_HINT = {
 }
 
 
-def render_item(it: dict) -> str:
+def render_item(it: dict, hints: bool = True) -> str:
+    """Render one ledger line. hints=False keeps the same state but removes action directives."""
     action = f"{it.get('tool') or '?'}({it.get('target', '')})"
-    status = STATUS_HINT.get((it["type"], it["status"]), it["status"].upper())
+    plain = it["status"].upper()
+    status = STATUS_HINT.get((it["type"], it["status"]), plain) if hints else plain
     parts = [f"[{it['id']}] {it['type'].upper()} {action}: {status} (since turn {it['updated_turn']})"]
     if it.get("guard"):
         parts.append(f"condition: {it['guard']}")
     if it.get("unclear"):
-        parts.append("UNCLEAR - latest user update was ambiguous; ask the user before acting")
+        parts.append("UNCLEAR - latest user update was ambiguous; ask the user before acting" if hints else "UNCLEAR")
     if it.get("failed_attempts") and it["status"] == "ready":
-        parts.append(f"{it['failed_attempts']} failed attempt(s) - still pending")
+        parts.append(f"{it['failed_attempts']} failed attempt(s)" + (" - still pending" if hints else ""))
     last_note = it["history"][-1][4] if it.get("history") else ""
     if last_note and ("NOT satisfy" in last_note or "ignored" in last_note):
         parts.append(f"note: {last_note}")
