@@ -1,0 +1,126 @@
+\documentclass[11pt]{article}
+\usepackage[final]{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{xspace}
+
+\newcommand{\ours}{\textsc{LADL}\xspace}
+\newcommand{\st}[1]{\texttt{#1}}
+
+\title{Beyond Remembering: Maintaining Active Constraints and Pending\\ Commitments Across Context Compaction\\ \large Milestone Report}
+
+\author{Sheng Lu \quad Qixiang Fan \quad Ziyan Fan \quad Xiuping Zhu \\
+  Georgia Institute of Technology \\
+  \texttt{ECE 6256 / CS 6604, Fall 2026}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Long-running conversational agents must know not only what a user said, but which instructions still hold. We study whether explicit lifecycle tracking improves tool-action decisions when dialogue history is repeatedly compacted. This milestone reports a running benchmark, an ordinary-compaction baseline, stronger memory baselines, and results on two open 7--8B models under a hard 384-token memory cap, including a confirmation on 52 new timelines. Our Lifecycle-Aware Dialogue Ledger (\ours) beats all four compacted baselines for Qwen2.5-7B. For Llama-3.1-8B, it is confirmed better only than constraint pinning. For Qwen, much of the gain depends on rendering state with explicit action hints.
+\end{abstract}
+
+\section{Introduction}
+
+Conversational memory is typically evaluated by asking what an assistant recalls. Yet the operational question is often what it is still authorized or obliged to do. Consider ``Do not send the report until I approve the final version.'' Subsequent approval of an outline is not enough; explicit final approval may activate the commitment; a successful tool receipt may discharge it. After compaction, an agent may forget the guard, treat an obsolete guard as active, or repeat a completed action. These errors can occur even when relevant text was retained.
+
+Recent studies show that compaction can silently drop user constraints and cause prohibited tool calls \citep{wang2026lost,chen2026governance,zerhoudi2026cliff}. We study the next question: what happens to instructions whose status \emph{changes} after they are stated? We ask:
+
+\noindent\textbf{RQ1:} Static constraints are known to decay under repeated compaction; does mutable state (revoked, triggered, or discharged items) degrade differently, e.g., by becoming stale rather than missing?\\
+\textbf{RQ2:} Under an equal memory budget, does explicit lifecycle tracking improve downstream action correctness over pinning and chronological memory?\\
+\textbf{RQ3:} Which errors arise from incorrect stored state versus incorrect decisions given correct state?
+
+Our hypothesis is that modeling evidence-backed state transitions will reduce premature, prohibited, and duplicate actions, especially after multiple compaction rounds. The work is anchored in Knowledge, Memory, and Action (Lectures 13--17) and Evaluation (Lecture 12).
+
+\section{Background}
+
+\paragraph{Long-term conversational memory.} LoCoMo evaluates memory over very long dialogues of about 300 turns and up to 35 sessions \citep{maharana2024locomo}. LongMemEval benchmarks five abilities, including temporal reasoning and knowledge updates \citep{wu2025longmemeval}. MEME extends evaluation to multi-entity, evolving memory, including dependency reasoning and deletion, and finds that evaluated systems collapse on dependency reasoning despite adequate static retrieval \citep{jung2026meme}. MemGPT addresses bounded context through an OS-inspired memory design \citep{packer2023memgpt}. These works mainly ask whether a system can answer from memory. Mem2ActBench moves closer to action by testing whether agents apply long-term memory when selecting tools and grounding their parameters \citep{shen2026mem2act}.
+
+\paragraph{Compaction as a failure surface.} \citet{wang2026lost} find that evaluated compactors retain only 17\% of injected side constraints on average, and that maintaining constraints separately from the summary achieves over 90\% retention. \citet{chen2026governance} reports violations rising from 0\% with the policy in full context to 30\% after compaction, and proposes Constraint Pinning, which restores violations to 0\% on their benchmark. \citet{zerhoudi2026cliff} measure 53\% preservation of safety rules after one round of a production compactor and 10\% after five, and route knowledge through type-specific retention policies. \citet{salle2026compaction} find that the compaction threshold does not measurably affect task performance for two 1M-context frontier models, yet summaries still drop task constraints. \citet{woolford2026transparent} shows that a deterministic compactor preserving prose verbatim matches or outperforms alternatives on probes of user-set rules with lightweight models.
+
+\paragraph{Structured state and action outcomes.} LedgerAgent keeps a typed ledger of successful tool returns and gates tool calls against domain policies in customer-service tasks \citep{uddin2026ledgeragent}. Its state changes across turns, but it is not evaluated under compaction, and its constraints are domain policies rather than user instructions that can be revoked. \citet{pakhomov2026cleaning} show that a tool success receipt can help or hurt depending on whether its effect is present in the world, which motivates grounding completion in evidence. LifeFuse-Mem uses lifecycle labels to separate durable from transient information in a neural memory \citep{zhao2026lifefuse}; we instead track the status of individual instructions.
+
+\paragraph{Research gap.} Prior compaction work mainly asks whether a constraint \emph{survives}. \citet{wang2026lost} note that a side constraint holds until it is revised, revoked, or its scope ends, and \citet{chen2026governance} tests a forged ``policy rescinded'' notice as an attack. To our knowledge, no prior work evaluates \emph{legitimate} revocation, guard satisfaction, and discharge of user instructions across repeated compaction, scored at tool-decision checkpoints. We do not claim that structured state or pinning is new; we ask whether lifecycle-aware transitions matter beyond them.
+
+\section{System and Running Baseline}
+
+\paragraph{Benchmark.} We generate 48 gold event timelines from 13 families covering revocation, completion followed by repeat requests, and conditional triggering, including misleading partial approvals. Each timeline also contains a static control prohibition. Each is rendered as four dialogues with 1, 2, 3, or 5 compaction points, giving 192 dialogues (24--42 turns, mean 32.7) and 872 decision probes. Rules produce the gold state and permissible decision (\st{act}, \st{wait}, \st{clarify}, or \st{decline}) at each probe. Probes come from teammates, reminders, or workflow automation, never the user, and the agent's answer is not fed back, so labels stay deterministic. Twelve timelines (208 probes) were used for prompt development; the Test split uses the other 36 timelines with held-out templates (144 dialogues, 664 probes). Two of the four variants use LLM paraphrases, kept only if entity and polarity checks and an equivalence judge pass; 177 of their 556 event turns were paraphrased. An audit of 40 accepted paraphrases found 38 meaning-preserving, one label error, and one borderline case. A second Fresh set has 52 new timelines, four per primary family, rendered from the held-out template pool without paraphrases (208 dialogues, 912 probes).
+
+\paragraph{Lifecycle-Aware Dialogue Ledger.} An LLM extracts typed events from each user and tool turn. A deterministic reducer maintains \st{active}/\st{revoked} prohibitions and \st{waiting}/\st{ready}/\st{completed}/\st{cancelled} commitments. Only an explicit approval satisfying the stored guard moves a commitment to \st{ready}; only a verified tool success moves it to \st{completed}; a failed call leaves it pending. Each transition retains its evidence turn, and ambiguous updates are flagged for clarification. At each compaction point, the dialogue is replaced by a summary while the current-state ledger persists alongside it.
+
+\paragraph{Baseline and comparisons.} Our running baseline is ordinary task-focused recursive compaction. We also run full history (a diagnostic reference), constraint pinning rewritten by the LLM after each user or tool turn, a chronological ledger of extracted events without states, and a typed ledger with LLM-written transitions. A gold-event ledger isolates extraction error, and a no-hint variant keeps \ours's state but removes directives such as ``do NOT perform''. Compacted conditions share a summarizer, policy prompt, model, and hard 384-token memory cap: if summary plus persistent block exceeds the cap, the summary is shortened. We use Qwen2.5-7B-Instruct and Llama-3.1-8B-Instruct through vLLM \citep{kwon2023vllm} at temperature 0, each on one NVIDIA H200 on PACE-ICE. All PACE runs used about 1.4 GPU-hours. Confidence intervals use 2,000 bootstrap resamples of timelines, and the main paired tests are Holm-corrected. Code and data: \url{https://github.com/CentenaRIOZ/ECE6256FinalProject}.
+
+\section{First Results}
+
+\begin{table*}[t]
+\centering\small\setlength{\tabcolsep}{3pt}
+\resizebox{\textwidth}{!}{\input{tables/milestone_main.tex}}
+\caption{Decision accuracy (\%) under a hard 384-token memory cap on PACE-ICE, for the original test split (Test, 664 probes) and 52 new timelines (Fresh, 912 probes). Accuracy is four-way with timeline-clustered 95\% CIs. Exec.: post-hoc accuracy of the binary execute versus do-not-execute decision on Fresh. Tok.: mean memory tokens after the first compaction on Test.}
+\label{tab:main}
+\end{table*}
+
+\begin{table*}[t]
+\centering\small\setlength{\tabcolsep}{3pt}
+\resizebox{\textwidth}{!}{\input{tables/milestone_paired.tex}}
+\caption{Paired accuracy differences in percentage points under the hard cap, with 95\% timeline-bootstrap CIs. $\Delta$Exec.\ is measured on Fresh. $^{*}$: Holm-corrected two-sided $p<0.05$ over the 12 tests of one split and metric.}
+\label{tab:paired}
+\end{table*}
+
+\paragraph{Baseline versus \ours (RQ2).} On the Test split, \ours reaches 75.5\% for Qwen against 57.4\% for ordinary compaction. On Fresh, it reaches 78.1\% against 58.3\% and beats all four compacted baselines by 6.7 to 19.7 points after Holm correction (Tables~\ref{tab:main} and~\ref{tab:paired}). The result is weaker for Llama. On Fresh, \ours is confirmed better only than pinning (+5.8), and its differences from ordinary compaction (+4.2), the chronological ledger ($-$1.0), and LLM-written transitions (+1.2) are not significant after correction. Its significant deficit against the chronological ledger on Test ($-$7.5) does not replicate. RQ2 is therefore supported for Qwen and only partly for Llama.
+
+\paragraph{Action hints.} Removing action directives lowers Qwen by 8.6 points on Fresh and leaves it level with the chronological ledger (69.5\% versus 70.6\%). The no-hint ledger still beats ordinary compaction (+11.2, 95\% CI [+7.0, +15.1]) and pinning (+7.1 [+3.3, +10.8]). Removing hints does not significantly change Llama. For neither model does derived state without hints significantly beat the chronological log, so the Qwen gain depends on how state is presented to the policy as well as on tracking it.
+
+\paragraph{Where errors come from (RQ3).} On Fresh, wrong extraction causes errors on 8.0\% (Qwen) and 9.1\% (Llama) of probes, and wrong decisions despite correct ledger state cause 13.9\% and 13.5\%. Even with gold events, 16.2\% of decisions remain wrong for both models. Unneeded \st{clarify} accounts for 73 of Qwen's 148 such errors and 91 of Llama's 148.
+
+\paragraph{Where Llama fails.} Overall extraction F1 is similar for the two models on Fresh (0.87 and 0.86), but approval F1 is 0.91 for Qwen and 0.61 for Llama. On the 100 Fresh probes whose guard is unmet, Llama with \ours correctly waits 36 times and asks for clarification 45 times. In 36 of those 45 cases, the ledger is marked unclear because an approval was extracted as non-explicit. A post-hoc variant that takes this flag only from explicit ambiguity events reaches 80.7\%, recovering 3.3 of the 6.4 points between \ours and gold events, but the gain is not confirmed (Holm $p=0.066$).
+
+\paragraph{Stale versus missing state (RQ1).} For mutable items after at least one compaction on Test, stale answers are 24.7\% (Qwen) and 26.4\% (Llama) of wrong state answers under ordinary compaction, above chance baselines of 13.4\% and 15.6\%. They are much more common with full history (55.0\% and 54.6\%), so staleness is a real error type, but compaction is not its main cause.
+
+\paragraph{Robustness.} The hard cap changes no condition by more than 1.5 points relative to an uncapped PACE rerun. Qwen's advantage over ordinary compaction and the chronological ledger holds at budgets of 256, 384, and 768 tokens and for early, spread, and late compaction. Under the post-hoc Exec.\ metric, \ours is the highest of the five compacted conditions on Fresh for both models (89.4\% and 89.7\%), although Llama's advantage is significant only over pinning. Accuracy on PACE differs from our first workstation run by at most 2.7 points per condition.
+
+\paragraph{What this does not yet establish.} (1) The budget is a cap, not equal usage: after the first compaction on Test, ordinary compaction averages 131 (Qwen) and 183 (Llama) memory tokens, against 254 and 291 for \ours. (2) Fresh timelines reuse the held-out template pool, so they test new combinations rather than new language. (3) Gold labels and \ours share the same transition rules, so the benchmark tests whether tracking those rules helps, not whether the rules are universally correct. (4) Each model uses one prompt.
+
+\section{Changes Since the Proposal}
+
+\begin{itemize}\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}\setlength{\topsep}{2pt}
+\item \textbf{Scope.} The proposal targeted an ordinary-compaction baseline and one result by this milestone. All six planned conditions, the gold-event intervention, and guard, receipt, and action-hint ablations now run on both models, across three budgets and three compaction placements.
+\item \textbf{Compute.} We first ran on a local two-GPU workstation, then reran the reported experiments on PACE-ICE as proposed.
+\item \textbf{Budget.} The first run did not strictly enforce the cap: up to 22.6\% of a condition's probes exceeded it. All reported results use the hard cap.
+\item \textbf{Data.} Dialogues span 24--42 turns rather than the planned 25--40, and only 32\% of paraphrase attempts passed validation. Every timeline with \st{REV1} as its primary family fell in dev, so the Fresh set balances all 13 families.
+\item \textbf{Measurement.} We added a state query for RQ1 and RQ3, the post-hoc Exec.\ metric, Holm correction, and a confirmation rule fixed before the Fresh runs.
+\item \textbf{Positioning.} We added four closely related recent papers and corrected our description of LedgerAgent.
+\end{itemize}
+
+\section{Plan for the Final Three Weeks}
+
+\begin{table}[h]
+\centering\small\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.51\columnwidth}>{\raggedright\arraybackslash}p{0.19\columnwidth}@{}}
+\toprule
+Dates & Work & Lead \\
+\midrule
+Nov 22--26 & Improve approval extraction on dev, then retest & Qixiang Fan \\
+Nov 22--26 & Error analysis with real dialogue examples & Xiuping Zhu \\
+Nov 24--29 & Test new language with validated new templates or paraphrases & Sheng Lu \\
+Nov 24--29 & Give baselines equivalent action guidance to test the hint effect & Ziyan Fan \\
+Dec 1--3 & Update poster (PDF due Dec 2); present Dec 3 & All \\
+Dec 4--8 & Final paper, data statement, compute report, and contribution statement & All \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent If the new-language test or hint-parity control removes Qwen's gain, we will report the negative result and analyze its boundary conditions.
+
+\section*{Acknowledgements and AI-Use Disclosure}
+We used Claude (Anthropic) as a coding and writing assistant. It implemented the benchmark generator, memory conditions, evaluation harness, and PACE control experiments, and ran the experiments. For this report, it condensed the team's proposal into the Introduction and Background, drafted the remaining sections from the experimental outputs, searched arXiv for related work, and suggested the Exec.\ analysis, the hard-cap and action-hint controls, the fresh-timeline confirmation, and the remaining plan. Tables are generated by script from logged probe outputs, and citation titles and authors were checked against arXiv records. The authors are accountable for all content.
+
+\bibliography{references}
+
+\end{document}
