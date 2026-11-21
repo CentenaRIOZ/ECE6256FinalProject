@@ -104,6 +104,7 @@ Individual steps:
 | Fresh timelines and compaction placements | `python -m src.generation.build --fresh --out data/fresh --n-per-family 4 --seed 20261121` |
 | PACE-ICE budget, fresh-data, and placement runs | `sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml extended`, then the same with `configs/llama8b.yaml` |
 | Extended report | `python -m src.eval.extended_report --out results/extended` |
+| Error attribution and approval extraction | `python -m src.eval.error_analysis --out results/extended` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.
