@@ -11,5 +11,5 @@ for B in 256 768; do                           # memory-budget sweep (main condi
   python -m src.eval.run --config configs/llama8b.yaml --budget $B --conditions summary,pinning,chrono,typed_llm,lifecycle &
   wait
 done
-python -m src.eval.analyze --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b --budget 384 --out results
+python -m src.eval.analyze --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b results/runs/qwen2.5-7b-strict results/runs/llama3.1-8b-strict --budget 384 --out results
 python -m src.eval.budget_sweep --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b --out results

@@ -31,8 +31,11 @@ PAIRS = [("lifecycle", "summary", "LADL $-$ ordinary compaction"), ("lifecycle",
 FLOOR = 2 / (REPS + 1)
 
 
+ROOT = Path("results/runs")
+
+
 def read(suffix: str, budget: int) -> dict[str, pd.DataFrame]:
-    return {label: load(f"results/runs/{run}{suffix}", budget) for label, run in RUNS.items()}
+    return {label: load(str(ROOT / f"{run}{suffix}"), budget) for label, run in RUNS.items()}
 
 
 def ci_cell(d: pd.DataFrame) -> str:
@@ -99,9 +102,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--budget", type=int, default=384)
     ap.add_argument("--out", default="paper/tables")
+    ap.add_argument("--runs", default="results/runs")
     a = ap.parse_args()
+    ROOT = Path(a.runs)
     test_runs = read("-pace-hardcap", a.budget)
     fresh_runs = read("-pace-fresh-spread", a.budget)
     out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
     (out / "milestone_main.tex").write_text(main_table(test_runs, fresh_runs))
     (out / "milestone_paired.tex").write_text(paired_table(test_runs, fresh_runs))

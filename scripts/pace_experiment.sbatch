@@ -4,6 +4,8 @@
 #   MODE is smoke, full, hardcap, extended-smoke, extended, dev, confirm-smoke, confirm, replicate, or v2-robust.
 #   Several modes run in order in one job and share one LLM cache.
 #   CACHE_SUFFIX=name keeps this job's cache in a separate file, for jobs that run at the same time.
+#   RUN_TAG=-name appends a tag to every run folder name.
+#   LIMIT=n runs only the first n dialogues. MAX_CONCURRENCY=n overrides concurrent requests. VLLM_BATCH_INVARIANT=0 turns off deterministic serving (default 1).
 #   full:     original test split at B=384, with and without the hard cap
 #   hardcap:  original test split at B=384 with the hard cap only
 #   extended: hard-cap budgets 256 and 768, then fresh timelines with spread, early, and late compaction
@@ -16,7 +18,7 @@
 #SBATCH -N1 --ntasks-per-node=1 --cpus-per-task=8 --mem=64G
 #SBATCH --gres=gpu:h200:1
 #SBATCH -t 02:00:00
-#SBATCH --exclude=atl1-1-03-014-16-0,atl1-1-03-014-9-0,atl1-1-03-015-9-0,atl1-1-03-017-16-0,atl1-1-03-018-2-0,atl1-1-03-017-30-0,atl1-1-03-015-23-0
+#SBATCH --exclude=atl1-1-03-014-16-0,atl1-1-03-014-9-0,atl1-1-03-015-9-0,atl1-1-03-017-16-0,atl1-1-03-018-2-0,atl1-1-03-017-30-0,atl1-1-03-015-23-0,atl1-1-03-015-16-0
 #SBATCH --signal=B:TERM@180
 #SBATCH -o logs/%x_%j.out
 set -euo pipefail
@@ -26,13 +28,20 @@ cd "$SLURM_SUBMIT_DIR"
 ROOT=$PWD
 PY=$ROOT/.conda-env/bin/python
 export HF_HOME=$ROOT/hf_home HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 VLLM_USE_FLASHINFER_SAMPLER=0
+# Batch-invariant kernels make outputs independent of batching, so a rerun reproduces every response exactly.
+# Runs before Nov 24, 2026 used VLLM_BATCH_INVARIANT=0; set it to 0 to repeat that setting.
+export VLLM_BATCH_INVARIANT=${VLLM_BATCH_INVARIANT:-1}
 
-read -r MODEL RUN PORT CACHE VLLM_ARGS < <("$PY" -c "
+read -r MODEL RUN PORT CACHE REV VLLM_ARGS < <("$PY" -c "
 import sys, yaml
 from urllib.parse import urlparse
 c = yaml.safe_load(open(sys.argv[1]))
-print(c['model'], c['run_name'], urlparse(c['base_url']).port, c['cache'], c.get('vllm_args', ''))" "$CONFIG")
+rev = (yaml.safe_load(open('configs/model_revisions.yaml')) or {}).get(c['model'])
+assert rev, 'add the model to configs/model_revisions.yaml'
+print(c['model'], c['run_name'], urlparse(c['base_url']).port, c['cache'], rev, c.get('vllm_args', ''))" "$CONFIG")
 [ -n "${CACHE_SUFFIX:-}" ] && CACHE=${CACHE%.sqlite}_$CACHE_SUFFIX.sqlite
+# RUN_TAG=-name writes to new run folders, for example a rerun without the cache.
+RUN=$RUN${RUN_TAG:-}
 CONDS=full,summary,pinning,chrono,typed_llm,lifecycle,lifecycle_gold,abl_noguard,abl_noreceipt,lifecycle_strict,lifecycle_nohint
 ALL_CONDS=$CONDS,summary_hint,pinning_hint,chrono_hint
 V2_CONDS=chrono,chrono_hint,typed_llm,lifecycle,lifecycle_nohint,lifecycle_strict,abl_noguard,abl_noreceipt
@@ -82,27 +91,45 @@ a.backup(b); b.close(); a.close(); os.replace(tmp, dst)" "$LOCAL_CACHE" "$CACHE"
   fi
 }
 trap save_cache EXIT
-trap 'echo "time limit signal"; exit 143' TERM
+# Bash runs a trap only after a foreground child exits, so runs go to the background and the shell waits on them.
+RUN_PID=
+trap 'echo "time limit signal"; [ -n "$RUN_PID" ] && kill "$RUN_PID" 2>/dev/null; exit 143' TERM
 
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+echo "VLLM_BATCH_INVARIANT=$VLLM_BATCH_INVARIANT"
 "$PY" -c "
 import sys
 from src.llm.client import TokenCounter
 assert TokenCounter(sys.argv[1]).tok is not None, 'tokenizer unavailable'" "$MODEL"
 
-"$ROOT/.conda-env/bin/vllm" serve "$MODEL" --port "$PORT" --max-model-len 16384 \
+# Another job on the node may already hold the config's port, so serve on a free port and point a job-local copy
+# of the config at it. The cache key does not include the URL, so this does not change any result.
+PORT=$("$PY" -c "import socket; s = socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
+JOB_CONFIG=$LOCAL/config.yaml
+"$PY" -c "
+import sys, yaml
+c = yaml.safe_load(open(sys.argv[1]))
+c['base_url'] = f'http://localhost:{sys.argv[2]}/v1'
+yaml.safe_dump(c, open(sys.argv[3], 'w'), sort_keys=False)" "$CONFIG" "$PORT" "$JOB_CONFIG"
+echo "serving on port $PORT"
+"$ROOT/.conda-env/bin/vllm" serve "$MODEL" --revision "$REV" --tokenizer-revision "$REV" --port "$PORT" --max-model-len 16384 \
   --gpu-memory-utilization 0.85 --seed 0 $VLLM_ARGS > "logs/vllm_${SLURM_JOB_ID}.log" 2>&1 &
 VLLM_PID=$!
 for _ in $(seq 1 180); do
-  curl -sf "localhost:$PORT/v1/models" >/dev/null && break
+  curl -sf "localhost:$PORT/v1/models" | grep -qF "\"$MODEL\"" && break
   kill -0 "$VLLM_PID" 2>/dev/null || { echo "vLLM exited"; tail -30 "logs/vllm_${SLURM_JOB_ID}.log"; exit 3; }
   sleep 5
 done
-curl -sf "localhost:$PORT/v1/models" >/dev/null || { echo "vLLM did not start"; exit 3; }
+curl -sf "localhost:$PORT/v1/models" | grep -qF "\"$MODEL\"" || { echo "vLLM did not start"; exit 3; }
+kill -0 "$VLLM_PID" 2>/dev/null || { echo "the server on port $PORT is not ours"; exit 3; }
 
 run() {
   local name=$1; shift
-  "$PY" -m src.eval.run --config "$CONFIG" --conditions "$CONDS" --cache "$LOCAL_CACHE" --run-name "$name" "$@"
+  "$PY" -m src.eval.run --config "$JOB_CONFIG" --conditions "$CONDS" --cache "$LOCAL_CACHE" --run-name "$name" \
+    ${LIMIT:+--limit "$LIMIT"} ${MAX_CONCURRENCY:+--max-concurrency "$MAX_CONCURRENCY"} "$@" &
+  RUN_PID=$!
+  wait "$RUN_PID"
+  RUN_PID=
 }
 
 START=$(date +%s)

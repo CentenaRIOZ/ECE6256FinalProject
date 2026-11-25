@@ -41,13 +41,18 @@ class Cache:
 
 class LLM:
     def __init__(self, model: str, base_url: str = "http://localhost:8000/v1", cache_path: str = "cache/llm.sqlite",
-                 max_concurrency: int = 128, api_key: str | None = None, timeout: float = 300):
+                 max_concurrency: int = 128, api_key: str | None = None, timeout: float = 300,
+                 cache_only: bool = False):
+        """cache_only replays a finished run: a cache miss returns an empty response and is counted, not requested."""
         self.model = model
+        self.cache_only = cache_only
         self.client = AsyncOpenAI(base_url=base_url, api_key=api_key or os.environ.get("OPENAI_API_KEY", "EMPTY"),
                                   timeout=timeout, max_retries=3)
         self.cache = Cache(cache_path)
         self.sem = asyncio.Semaphore(max_concurrency)
         self.stats = defaultdict(lambda: defaultdict(float))  # tag -> counters
+        # Identical requests in flight share one response, so the cache holds exactly what every caller used.
+        self._inflight: dict[str, asyncio.Future] = {}
 
     async def chat(self, messages: list[dict], *, tag: str = "", max_tokens: int = 512, temperature: float = 0.0,
                    json_schema: dict | None = None) -> dict:
@@ -55,18 +60,25 @@ class LLM:
                        schema=json_schema)
         key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         hit = self.cache.get(key)
-        if hit is None:
-            kw = {}
-            if json_schema is not None:
-                kw["response_format"] = {"type": "json_schema",
-                                         "json_schema": {"name": "out", "schema": json_schema, "strict": True}}
-            async with self.sem:
-                t0 = time.perf_counter()
-                r = await self.client.chat.completions.create(model=self.model, messages=messages, max_tokens=max_tokens,
-                                                              temperature=temperature, seed=0, **kw)
-                lat = time.perf_counter() - t0
-            hit = dict(text=r.choices[0].message.content or "", prompt_tokens=r.usage.prompt_tokens,
-                       completion_tokens=r.usage.completion_tokens, latency=lat)
+        if hit is None and self.cache_only:
+            self.stats[tag]["cache_miss"] += 1
+            self.stats[tag]["calls"] += 1
+            return dict(text="", prompt_tokens=0, completion_tokens=0, latency=0.0, cached=False)
+        if hit is None and key in self._inflight:
+            hit = dict(await asyncio.shield(self._inflight[key]))
+            cached = True
+        elif hit is None:
+            future = asyncio.get_running_loop().create_future()
+            self._inflight[key] = future
+            try:
+                hit = await self._request(messages, max_tokens, temperature, json_schema)
+            except BaseException as exc:
+                future.set_exception(exc)
+                future.exception()  # mark retrieved when nobody else is waiting
+                raise
+            finally:
+                self._inflight.pop(key, None)
+            future.set_result(hit)
             self.cache.put(key, hit)
             cached = False
         else:
@@ -78,6 +90,19 @@ class LLM:
         s["completion_tokens"] += hit["completion_tokens"]
         s["latency"] += hit["latency"]
         return dict(hit, cached=cached)
+
+    async def _request(self, messages, max_tokens, temperature, json_schema) -> dict:
+        kw = {}
+        if json_schema is not None:
+            kw["response_format"] = {"type": "json_schema",
+                                     "json_schema": {"name": "out", "schema": json_schema, "strict": True}}
+        async with self.sem:
+            t0 = time.perf_counter()
+            r = await self.client.chat.completions.create(model=self.model, messages=messages, max_tokens=max_tokens,
+                                                          temperature=temperature, seed=0, **kw)
+            lat = time.perf_counter() - t0
+        return dict(text=r.choices[0].message.content or "", prompt_tokens=r.usage.prompt_tokens,
+                    completion_tokens=r.usage.completion_tokens, latency=lat)
 
     async def chat_json(self, messages: list[dict], schema: dict, **kw) -> tuple[dict | None, dict]:
         r = await self.chat(messages, json_schema=schema, **kw)
@@ -100,13 +125,20 @@ def parse_json(text: str):
     return None
 
 
+def model_revision(model: str) -> str | None:
+    """Pinned Hugging Face revision for a model, from configs/model_revisions.yaml."""
+    import yaml
+    path = Path(__file__).resolve().parents[2] / "configs" / "model_revisions.yaml"
+    return (yaml.safe_load(path.read_text()) or {}).get(model) if path.exists() else None
+
+
 class TokenCounter:
     """Counts/truncates with the action model's own tokenizer (falls back to whitespace)."""
 
-    def __init__(self, model: str):
+    def __init__(self, model: str, revision: str | None = None):
         try:
             from transformers import AutoTokenizer
-            self.tok = AutoTokenizer.from_pretrained(model)
+            self.tok = AutoTokenizer.from_pretrained(model, revision=revision or model_revision(model))
         except Exception:
             self.tok = None
 

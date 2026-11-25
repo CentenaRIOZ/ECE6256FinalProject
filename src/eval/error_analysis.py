@@ -77,8 +77,11 @@ def gold_error_counts(df: pd.DataFrame) -> dict:
                 gold_acted_when_not_allowed=int((wrong.pred_decision == "act").sum()))
 
 
+ROOT = Path("results/runs")
+
+
 def analyze_run(split: str, model: str, run: str, suffix: str, dialogues: dict) -> dict:
-    path = Path("results/runs") / f"{run}{suffix}"
+    path = ROOT / f"{run}{suffix}"
     df = pd.DataFrame(read_jsonl(path / "probes_B384.jsonl"))
     extracted = {r["dialogue_id"]: r["events"] for r in read_jsonl(path / "extractions.jsonl")}
     quality = evaluate({k: dialogues[k] for k in extracted},
@@ -116,7 +119,10 @@ def markdown(table: pd.DataFrame) -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/extended")
+    ap.add_argument("--runs", default="results/runs")
     a = ap.parse_args()
+    global ROOT
+    ROOT = Path(a.runs)
     rows = []
     for split, (suffix, data) in SPLITS.items():
         dialogues = {r["dialogue_id"]: r for r in read_jsonl(Path(data))}

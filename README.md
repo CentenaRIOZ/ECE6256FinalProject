@@ -57,25 +57,29 @@ Ablations: transition logic, tool-success evidence, compaction count and locatio
 - **Ziyan Fan:** compaction/pinning baselines, PACE-ICE
 - **Xiuping Zhu:** evaluation harness, statistics, error analysis, reproducibility
 
-## Results (test split, 664 probes, B=384)
+## Results (Test split, 664 probes, B=384, hard memory cap)
 Numbers in this README and in `docs/` are copied from result files. Those files, the raw run records, and logs are generated locally under `results/` by the commands below and are not stored in git. Paper: [`paper/main.pdf`](paper/main.pdf). Poster: [`poster/poster.pdf`](poster/poster.pdf).
 PACE-ICE control experiments and their interpretation: [`docs/pace_experiments.md`](docs/pace_experiments.md).
 Post-milestone confirmation, extraction, and third-model (Mistral-7B) results: [`docs/post_milestone_results.md`](docs/post_milestone_results.md).
+Reproducibility checks and the deterministic reruns: [`docs/reproducibility.md`](docs/reproducibility.md).
 
-| Condition | Qwen2.5-7B acc. | Llama-3.1-8B acc. |
-|---|---|---|
-| Full history (reference) | 60.4 | 81.6 |
-| Ordinary compaction | 60.1 | 73.5 |
-| Constraint pinning | 64.2 | 66.4 |
-| Chronological event ledger | 69.9 | **77.0** |
-| Typed ledger, LLM transitions | 69.1 | 69.4 |
-| **Lifecycle ledger (ours)** | **76.4** | 71.1 |
-| Ours, gold events | 83.1 | 81.5 |
-| Ours, strict hedging (post hoc) | 76.1 | 76.8 |
+Four-way decision accuracy (%) from the deterministic PACE-ICE runs. Extraction v1 unless noted. Mistral-7B was added later as a held-out model. Bold marks the best condition under compaction in each column, excluding gold events.
+
+| Condition | Qwen2.5-7B | Llama-3.1-8B | Mistral-7B |
+|---|---|---|---|
+| Full history (reference) | 60.1 | 81.9 | 72.7 |
+| Ordinary compaction | 60.1 | 72.0 | **66.9** |
+| Constraint pinning | 62.5 | 68.8 | 66.6 |
+| Chronological event ledger | 70.0 | 78.6 | 53.8 |
+| Typed ledger, LLM transitions | 70.0 | 69.0 | 52.7 |
+| **Lifecycle ledger (ours)** | **74.1** | 72.4 | 61.7 |
+| Ours, extraction v2 | 74.1 | **80.0** | 57.5 |
+| Ours, strict hedging (post hoc) | 74.1 | 78.0 | 61.7 |
+| Ours, gold events | 82.2 | 83.4 | 84.0 |
 
 ## Setup
 ```bash
-conda activate index            # or: pip install -r requirements.txt  (Python 3.10+)
+pip install -r requirements.txt  # Python 3.12, exact versions; full PACE-ICE environment: scripts/pace_env_freeze.txt
 python -m pytest -q tests       # reducer / generator / registry unit tests
 ```
 
@@ -86,7 +90,7 @@ scripts/serve_vllm.sh meta-llama/Llama-3.1-8B-Instruct 1 8001   # terminal 2
 scripts/run_all.sh        # data -> paraphrase -> tests -> runs (B=384, sweep 256/768) -> analysis
 ```
 On PACE-ICE: `sbatch scripts/pace_run.sbatch configs/qwen7b.yaml Qwen/Qwen2.5-7B-Instruct`.
-All LLM calls are cached in `cache/*.sqlite` (temperature 0, seed 0), so re-running analysis is free.
+All LLM calls are cached in `cache/*.sqlite` (temperature 0, seed 0), so re-running analysis is free. PACE-ICE jobs serve the model revisions in `configs/model_revisions.yaml` with batch-invariant vLLM, so a rerun reproduces every response exactly. Runs made before Nov 24, 2026 were not batch-invariant; see [`docs/reproducibility.md`](docs/reproducibility.md) for what that means for their numbers.
 
 Individual steps:
 | Step | Command |
@@ -95,7 +99,7 @@ Individual steps:
 | Paraphrase (+ judge) | `python -m src.generation.paraphrase` |
 | Run conditions | `python -m src.eval.run --config configs/qwen7b.yaml [--conditions summary,lifecycle] [--limit 5] [--budget 256]` |
 | Extraction quality | `python -m src.eval.extraction_eval --extractions results/runs/<run>/extractions.jsonl` |
-| Tables + figures | `python -m src.eval.analyze --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b` |
+| Tables + figures | `python -m src.eval.analyze --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b results/runs/qwen2.5-7b-strict results/runs/llama3.1-8b-strict` |
 | Budget sweep | `python -m src.eval.budget_sweep --runs results/runs/qwen2.5-7b results/runs/llama3.1-8b` |
 | Milestone tables | `python -m src.eval.milestone_tables --budget 384 --out paper/tables` |
 | PACE-ICE setup | `sbatch scripts/pace_setup.sbatch` (versions: `scripts/pace_env_freeze.txt`) |
@@ -113,6 +117,10 @@ Individual steps:
 | Exploratory replication | `python -m src.eval.replication_report --out results/confirm` |
 | v2 robustness, disaggregation, and RQ1 | `python -m src.eval.post_milestone_analysis --out results/confirm` |
 | Real error examples | `python -m src.eval.error_examples --out results/confirm/error_examples.md` |
+| Replay finished runs from their caches (PACE-ICE) | `sbatch scripts/pace_replay.sbatch` |
+| Reports from the deterministic runs | `python -m src.eval.tagged_runs --tag=-det1 --out results/runs_det`, then any report above with `--runs results/runs_det` |
+| Check two runs are identical | `python -m src.eval.determinism_check <run_dir_a> <run_dir_b>` |
+| Compare planned tests across runs | `python -m src.eval.run_variability --run original=results/runs --run deterministic=results/runs_det --out results/det/variability` |
 | PACE-ICE third model (Mistral-7B, plan in `docs/third_model_plan.md`) | `sbatch scripts/pace_download.sbatch mistralai/Mistral-7B-Instruct-v0.3`, then `sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml hardcap,extended,replicate,v2-robust` and `CACHE_SUFFIX=confirm sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml confirm` |
 | Three-model accuracy and extraction | `python -m src.eval.three_model_report --out results/confirm` |
 

@@ -109,14 +109,10 @@ def pct(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return out
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--runs", default="results/runs")
-    ap.add_argument("--out", default="results/confirm")
-    a = ap.parse_args()
-    root, out = Path(a.runs), Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    dialogues = {r["dialogue_id"]: r for r in read_jsonl(Path(DATA))}
+def planned_tests(root: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """All test families for the runs under root, and the probe table they were computed from."""
+    MODELS.clear()
+    MODELS.update(TWO_MODELS)
     third = all((root / f"{run}-pace-confirm-{v}" / "probes_B384.jsonl").exists() for _, run in THIRD_MODEL.values()
                 for v in ("v1", "v2"))
     if third:
@@ -130,7 +126,18 @@ def main():
                      + family(df, V2_FAMILY, "third v2", metric, THIRD_MODEL)
                      + family(df, SECONDARY, "third secondary", metric, THIRD_MODEL))
         rows += family(df, V2_FAMILY, "two-model v2", metric, planned=False)
-    tests = pd.DataFrame(rows)
+    return pd.DataFrame(rows), df
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--runs", default="results/runs")
+    ap.add_argument("--out", default="results/confirm")
+    a = ap.parse_args()
+    root, out = Path(a.runs), Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    dialogues = {r["dialogue_id"]: r for r in read_jsonl(Path(DATA))}
+    tests, df = planned_tests(root)
     accuracy = accuracy_table(df)
     extraction = extraction_table(root, dialogues)
     gold = gold_table(root)

@@ -17,15 +17,20 @@ export CONDA_PKGS_DIRS=$ROOT/.conda-pkgs
 
 source "$HOME/miniconda3/etc/profile.d/conda.sh"
 [ -x "$ENV_DIR/bin/python" ] || conda create -y -p "$ENV_DIR" --override-channels -c conda-forge python=3.12 pip
-"$ENV_DIR/bin/python" -m pip install -r scripts/requirements-pace.txt
-"$ENV_DIR/bin/python" -m pip list --format=freeze > scripts/pace_env_freeze.txt
+# Install the exact environment used for all runs. scripts/requirements-pace.txt is the original top-level list.
+"$ENV_DIR/bin/python" -m pip install -r scripts/pace_env_freeze.txt
+mkdir -p logs
+"$ENV_DIR/bin/python" -m pip list --format=freeze > "logs/pace_env_freeze_${SLURM_JOB_ID}.txt"
+diff -q scripts/pace_env_freeze.txt "logs/pace_env_freeze_${SLURM_JOB_ID}.txt" || echo "WARNING: installed environment differs from scripts/pace_env_freeze.txt"
 
 "$ENV_DIR/bin/python" - <<'PY'
+import yaml
 from huggingface_hub import snapshot_download
 from transformers import AutoTokenizer
+revisions = yaml.safe_load(open("configs/model_revisions.yaml"))
 for repo in ("Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"):
-    path = snapshot_download(repo, ignore_patterns=["original/*", "*.pth", "*.bin", "*.gguf"])
-    AutoTokenizer.from_pretrained(repo)
+    path = snapshot_download(repo, revision=revisions[repo], ignore_patterns=["original/*", "*.pth", "*.bin", "*.gguf"])
+    AutoTokenizer.from_pretrained(repo, revision=revisions[repo])
     print("ready:", repo, path, flush=True)
 PY
 echo "setup complete"

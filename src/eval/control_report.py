@@ -80,8 +80,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--budget", type=int, default=384)
     ap.add_argument("--out", default="results/controls")
+    ap.add_argument("--runs", default="results/runs")
     a = ap.parse_args()
-    root = Path("results/runs")
+    root = Path(a.runs)
     read = lambda suffix: pd.concat([load(str(root / f"{r}{suffix}"), a.budget) for r in MODELS.values()],
                                     ignore_index=True)
     original = pd.concat([read(""), read("-strict")], ignore_index=True)

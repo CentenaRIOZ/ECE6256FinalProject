@@ -6,15 +6,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import yaml
 
 from src.extraction.extractor import extract_dialogue, gold_events
-from src.llm.client import LLM, TokenCounter
+from src.llm.client import LLM, TokenCounter, model_revision
 from src.memory.managers import CONDITIONS, LEDGER_CONDS, Memory
 from src.policy.policy import decide, state_query
 
@@ -58,6 +60,38 @@ async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events, hard_cap: 
     return rows
 
 
+def code_fingerprint() -> dict:
+    """Identifies the code that produced a run, also on machines where the project is not a git checkout."""
+    root = Path(__file__).resolve().parents[2]
+    files = sorted(p for p in (root / "src").rglob("*.py"))
+    digest = hashlib.sha256()
+    for p in files:
+        digest.update(str(p.relative_to(root)).encode() + b"\0" + p.read_bytes() + b"\0")
+    try:
+        commit = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        dirty = bool(subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--", "src"],
+                                    capture_output=True, text=True).stdout.strip())
+    except Exception:
+        commit, dirty = "", None
+    # Only the project modules this run imported; tools and reports elsewhere in src/ do not change it.
+    loaded = sorted(Path(m.__file__).resolve() for name, m in list(sys.modules.items())
+                    if name.startswith("src.") and getattr(m, "__file__", None))
+    run_digest = hashlib.sha256()
+    for p in loaded:
+        run_digest.update(str(p.relative_to(root)).encode() + b"\0" + p.read_bytes() + b"\0")
+    return dict(src_sha256=digest.hexdigest(), n_files=len(files), git_commit=commit or None, src_dirty=dirty,
+                run_sha256=run_digest.hexdigest(), run_files=[str(p.relative_to(root)) for p in loaded])
+
+
+def server_version(base_url: str) -> str | None:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(base_url.rsplit("/v1", 1)[0] + "/version", timeout=5) as r:
+            return json.loads(r.read()).get("version")
+    except Exception:
+        return None
+
+
 def gpu_info() -> str:
     try:
         return subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
@@ -75,7 +109,7 @@ async def main_async(args):
     out.mkdir(parents=True, exist_ok=True)
     dlgs = load_dialogues(args.data or cfg["data"], args.split or cfg.get("split"), args.limit)
     llm = LLM(cfg["model"], cfg["base_url"], args.cache or cfg.get("cache", "cache/llm.sqlite"),
-              cfg.get("max_concurrency", 128))
+              args.max_concurrency or cfg.get("max_concurrency", 128), cache_only=args.cache_only)
     tc = TokenCounter(cfg.get("tokenizer", cfg["model"]))
     budget = int(args.budget or cfg["budget"])
     t0 = time.time()
@@ -118,6 +152,11 @@ async def main_async(args):
     llm.close()
     meta = dict(config=cfg, conditions=conds, budget=budget, hard_cap=args.hard_cap, extract_version=args.extract_version,
                 n_dialogues=len(dlgs),
+                args=dict(data=args.data or cfg["data"], split=args.split or cfg.get("split"), limit=args.limit,
+                          cache=args.cache or cfg.get("cache"), cache_only=args.cache_only,
+                          max_concurrency=args.max_concurrency or cfg.get("max_concurrency", 128)),
+                code=code_fingerprint(), model_revision=model_revision(cfg["model"]),
+                server_version=None if args.cache_only else server_version(cfg["base_url"]),
                 wall_seconds=time.time() - t0,
                 gpu=gpu_info(), usage={k: dict(v) for k, v in llm.stats.items()})
     (out / f"meta_B{budget}.json").write_text(json.dumps(meta, indent=1))
@@ -136,6 +175,9 @@ def main():
     ap.add_argument("--cache", help="override the config's LLM cache path")
     ap.add_argument("--hard-cap", action="store_true", help="enforce summary + persistent block <= budget at every probe")
     ap.add_argument("--extract-version", type=int, choices=[1, 2], default=1)
+    ap.add_argument("--max-concurrency", type=int, help="override the config's number of concurrent requests")
+    ap.add_argument("--cache-only", action="store_true",
+                    help="replay from the cache without calling the server; misses are counted in meta usage")
     asyncio.run(main_async(ap.parse_args()))
 
 

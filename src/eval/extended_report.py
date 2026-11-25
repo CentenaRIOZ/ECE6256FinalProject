@@ -31,9 +31,11 @@ BUDGETS = (256, 384, 768)
 FLOOR = 2 / (REPS + 1)
 
 
+ROOT = Path("results/runs")
+
+
 def read(suffix: str, budget: int = 384) -> pd.DataFrame:
-    root = Path("results/runs")
-    return pd.concat([load(str(root / f"{run}{suffix}"), budget) for run in MODELS.values()], ignore_index=True)
+    return pd.concat([load(str(ROOT / f"{run}{suffix}"), budget) for run in MODELS.values()], ignore_index=True)
 
 
 def accuracy_rows(df: pd.DataFrame, **labels) -> list[dict]:
@@ -89,7 +91,10 @@ def pct(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/extended")
+    ap.add_argument("--runs", default="results/runs")
     a = ap.parse_args()
+    global ROOT
+    ROOT = Path(a.runs)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
 

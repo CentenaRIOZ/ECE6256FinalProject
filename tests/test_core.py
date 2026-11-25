@@ -189,3 +189,90 @@ def test_reports_include_only_models_with_complete_runs(tmp_path):
         (tmp_path / run / "probes_B384.jsonl").write_text("")
     assert available(tmp_path, ["-pace-confirm-v1", "-pace-confirm-v2"]) == {"Qwen": "qwen2.5-7b"}
     assert set(available(tmp_path, ["-pace-confirm-v1"])) == {"Qwen", "Mistral"}
+
+
+def test_cache_only_replay_counts_misses(tmp_path):
+    import asyncio
+    pytest = __import__("pytest")
+    pytest.importorskip("openai")
+    from src.llm.client import LLM
+    llm = LLM("m", "http://127.0.0.1:9/v1", str(tmp_path / "c.sqlite"), cache_only=True)
+    r = asyncio.run(llm.chat([{"role": "user", "content": "hi"}], tag="t"))
+    assert r["text"] == "" and llm.stats["t"]["cache_miss"] == 1
+    llm.close()
+
+
+def test_identical_requests_in_flight_share_one_response(tmp_path):
+    import asyncio
+    __import__("pytest").importorskip("openai")
+    from src.llm.client import LLM
+    llm = LLM("m", "http://127.0.0.1:9/v1", str(tmp_path / "c.sqlite"))
+    calls = []
+
+    async def fake_request(*args):
+        calls.append(1)
+        await asyncio.sleep(0.01)
+        return dict(text=f"answer {len(calls)}", prompt_tokens=1, completion_tokens=1, latency=0.0)
+
+    llm._request = fake_request
+
+    async def both():
+        msg = [{"role": "user", "content": "same"}]
+        return await asyncio.gather(llm.chat(msg), llm.chat(msg))
+
+    first, second = asyncio.run(both())
+    assert len(calls) == 1 and first["text"] == second["text"] == "answer 1"
+    llm.close()
+
+
+def test_determinism_check_flags_any_field_but_latency(tmp_path):
+    from src.eval.determinism_check import compare
+    row = dict(condition="lifecycle", probe_id="p1", pred_decision="wait", latency=1.0)
+    for name, changes in (("a", {}), ("b", {"latency": 9.0}), ("c", {"pred_decision": "act"})):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "probes_B384.jsonl").write_text(json.dumps({**row, **changes}) + "\n")
+    assert compare(tmp_path / "a", tmp_path / "b")["identical"]
+    result = compare(tmp_path / "a", tmp_path / "c")
+    assert not result["identical"] and result["probes_B384"]["fields"] == ["pred_decision"]
+
+
+def test_surface_checker_accepts_valid_part_and_rejects_bad_one(tmp_path):
+    from src.generation.check_surface import PART_TOOLS, check_module, existing_text
+    from types import SimpleNamespace
+    args = {"send_email": "to=A; subject=B", "share_file": "file=A; recipient=B", "post_message": "channel=#a; text=B",
+            "book_meeting": "with=A; topic=B", "place_order": "item=A; vendor=B", "make_payment": "payee=A; amount=$1"}
+    actions = [dict(tool=t, target=args[t], vp=f"handle task {i} for Zed", noun=f"task {i}", artifact=f"plan {i}",
+                    partials=["intro", "body", "appendix"]) for i, t in enumerate(PART_TOOLS[1])]
+    slot_text = {"prohibit": "Do not {vp} %d.", "reinstate": "Stop: never {vp} %d.", "revoke": "Fine, {vp} %d.",
+                 "ambiguous_p": "Unsure on {noun} %d, ask me.", "do_now": "Please {vp} now %d.",
+                 "commit_cond": "Wait for the final {artifact}, then {vp} %d.",
+                 "approve_partial": "The {partial} of the {artifact} is good %d.",
+                 "approve_final": "The final {artifact} is approved %d.",
+                 "approve_final_archive": "For the record, the final {artifact} is approved %d.",
+                 "approve_ambig": "The {artifact} may be done, check with me %d.", "cancel": "Cancel {noun} %d."}
+    good = SimpleNamespace(PART=1, ACTIONS=actions, T={k: [v % i for i in range(3)] for k, v in slot_text.items()},
+                           PROBE={"teammate": ["{mate} asks you to {vp} %d." % i for i in range(2)],
+                                  "workflow": ["[Flow] Next: {vp} %d." % i for i in range(2)],
+                                  "reminder": ["[Todo] Open: {vp} %d." % i for i in range(2)]},
+                           FILLER=[("Question %d?" % i, "Answer %d." % i) for i in range(5)],
+                           FILLER_ENTITY=[("Where is the {artifact} %d?" % i, "In the folder.") for i in range(3)],
+                           TEAMMATES=["Quinn", "Rowan"])
+    assert check_module(good, existing_text()) == []
+    bad = SimpleNamespace(**{**vars(good), "T": {**good.T, "approve_partial": ["The final {artifact} %d." % i for i in range(3)]}})
+    assert any("approve_partial" in p for p in check_module(bad, existing_text()))
+
+
+def test_tagged_runs_replace_only_finished_originals(tmp_path):
+    from src.eval.tagged_runs import build
+    runs = tmp_path / "runs"
+    for name, probes in (("qwen2.5-7b", True), ("qwen2.5-7b-strict", True), ("qwen2.5-7b-pace-hardcap", True),
+                         ("qwen2.5-7b-det1-pace-hardcap", True), ("qwen2.5-7b-pace-fresh-late", True),
+                         ("qwen2.5-7b-det1-pace-fresh-late", False), ("qwen2.5-7b-rerun1-pace-confirm-v1", True)):
+        (runs / name).mkdir(parents=True)
+        if probes:
+            (runs / name / "probes_B384.jsonl").write_text("")
+    mapping = build(runs, "-det1", tmp_path / "det")
+    assert mapping == {"qwen2.5-7b": "qwen2.5-7b", "qwen2.5-7b-strict": "qwen2.5-7b-strict",
+                       "qwen2.5-7b-pace-hardcap": "qwen2.5-7b-det1-pace-hardcap",
+                       "qwen2.5-7b-pace-fresh-late": "qwen2.5-7b-pace-fresh-late"}
+    assert (tmp_path / "det" / "qwen2.5-7b-pace-hardcap" / "probes_B384.jsonl").exists()
