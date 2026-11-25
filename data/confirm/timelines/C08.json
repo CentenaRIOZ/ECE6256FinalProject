@@ -1,0 +1,104 @@
+{
+ "timeline_id": "C08",
+ "primary_family": "COND5",
+ "primary_category": "completion",
+ "secondary_family": "COND2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND5",
+   "category": "completion",
+   "action_id": "N10",
+   "tool": "book_meeting",
+   "target": "with=Harbor Hall; topic=customer summit",
+   "vp": "book Harbor Hall for the customer summit",
+   "noun": "the Harbor Hall reservation",
+   "artifact": "summit plan",
+   "partials": [
+    "speaker lineup",
+    "catering outline",
+    "floor layout"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND2",
+   "category": "conditional",
+   "action_id": "N07",
+   "tool": "post_message",
+   "target": "channel=#marketing; text=campaign brief",
+   "vp": "post the campaign brief in #marketing",
+   "noun": "the campaign brief",
+   "artifact": "campaign brief",
+   "partials": [
+    "audience section",
+    "key message",
+    "budget note"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N23",
+   "tool": "delete_records",
+   "target": "dataset=2021 clickstream logs",
+   "vp": "delete the 2021 clickstream logs",
+   "noun": "the 2021 clickstream data",
+   "artifact": "log purge proposal",
+   "partials": [
+    "storage estimate",
+    "privacy review",
+    "appendix table"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "approve_final_exec_fail",
+   "F0C"
+  ],
+  [
+   "approve_partial",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

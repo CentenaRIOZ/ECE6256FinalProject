@@ -97,7 +97,7 @@ Paired differences in percentage points, with 95% confidence intervals on the fr
 
 **RQ1: stale versus missing state.** For mutable items after at least one compaction, stale answers exceed a chance baseline under ordinary compaction: 24.7% of Qwen's wrong answers against 13.4% by chance, and 26.4% of Llama's against 15.6%. The rate is much higher with full history (55.0% and 54.6%), where nothing was compacted. Staleness is therefore a real error type, but compaction is not its main cause.
 
-**RQ3: where errors come from.** On fresh timelines, bad extraction causes errors on 8.0% (Qwen) and 9.1% (Llama) of probes, and wrong decisions despite correct ledger state cause 13.9% and 13.5%. With gold events, 16.2% of decisions remain wrong for both models. Llama's clearest weakness is approval extraction, with F1 0.61 against 0.91 for Qwen. The full breakdown is in `results/extended/error_analysis.md`.
+**RQ3: where errors come from.** On fresh timelines, bad extraction causes errors on 8.0% (Qwen) and 9.1% (Llama) of probes, and wrong decisions despite correct ledger state cause 13.9% and 13.5%. With gold events, 16.2% of decisions remain wrong for both models. Llama's clearest weakness is approval extraction, with F1 0.61 against 0.91 for Qwen. `python -m src.eval.error_analysis` writes the full breakdown to `results/extended/error_analysis.md`.
 
 **Cross-environment reproducibility.** The PACE rerun differs from the original run by at most 2.7 accuracy points per condition. Individual decisions match on 73.0% to 96.7% of probes, depending on the condition. New and old probe logs should not be mixed in one paired comparison.
 
@@ -146,6 +146,8 @@ python -m src.eval.milestone_tables --budget 384 --out paper/tables
 ```
 
 ## Files
+
+Paths under `results/` are generated locally by the commands above and are not stored in git.
 
 | Path | Contents |
 |---|---|

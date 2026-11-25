@@ -11,6 +11,9 @@ abl_noguard     lifecycle without guard logic (any approval triggers)
 abl_noreceipt   lifecycle without tool-success evidence (any attempt completes)
 lifecycle_strict  POST-HOC variant: hedges only from explicit `ambiguous` events (not from approval flags)
 lifecycle_nohint  lifecycle state rendered without action directives such as "do NOT perform"
+summary_hint    ordinary compaction whose summary records status and permitted action
+pinning_hint    pinning whose rules record status and permitted action
+chrono_hint     chronological log whose events carry their own action implication, without a reducer
 
 With hard_cap=True, the summary is shortened whenever summary + persistent block would exceed B tokens.
 """
@@ -22,11 +25,14 @@ from src.extraction.extractor import fmt_turn
 from src.ledger.reducer import Reducer, ReducerConfig, render_item, status_label
 
 CONDITIONS = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold",
-              "abl_noguard", "abl_noreceipt", "lifecycle_strict", "lifecycle_nohint"]
+              "abl_noguard", "abl_noreceipt", "lifecycle_strict", "lifecycle_nohint", "summary_hint", "pinning_hint",
+              "chrono_hint"]
 REDUCER_CONDS = {"lifecycle": ReducerConfig(), "lifecycle_gold": ReducerConfig(),
                  "abl_noguard": ReducerConfig(guard_logic=False), "abl_noreceipt": ReducerConfig(receipt_logic=False),
                  "lifecycle_strict": ReducerConfig(hedge_from_flags=False), "lifecycle_nohint": ReducerConfig()}
 LEDGER_CONDS = set(REDUCER_CONDS) | {"typed_llm"}
+PIN_CONDS = {"pinning", "pinning_hint"}
+CHRONO_CONDS = {"chrono", "chrono_hint"}
 
 SUMMARY_SYSTEM = ("You compress a conversation between a user and their workplace assistant so the assistant can continue "
                   "working without the original messages. Write a concise, task-focused summary: keep the user's "
@@ -38,6 +44,13 @@ PIN_SYSTEM = ("You maintain a PINNED RULES list for a workplace assistant: the u
               "rules the user changed (lifted prohibitions, cancelled tasks, completed or failed actions, approvals). Keep "
               "each rule one short line. If nothing changes, return the list unchanged. Output only the list, at most "
               "{words} words.")
+ACTION_GUIDANCE = ("For every instruction or task that still matters, state its current status and what the assistant may "
+                   "do, using these phrases: ACTIVE - do NOT perform; REVOKED - restriction lifted, action allowed; WAITING - "
+                   "condition not yet met; READY - condition met / requested, not yet done: perform when asked; COMPLETED - "
+                   "verified success, do NOT repeat; CANCELLED - do NOT perform; UNCLEAR - ask the user before acting; FAILED - "
+                   "still pending.")
+SUMMARY_HINT_SYSTEM = SUMMARY_SYSTEM.replace("Plain text,", ACTION_GUIDANCE + " Plain text,")
+PIN_HINT_SYSTEM = PIN_SYSTEM.replace("If nothing changes,", ACTION_GUIDANCE + " If nothing changes,")
 TRANSITION_SYSTEM = """You maintain a typed state ledger of a user's prohibitions and commitments for a workplace assistant.
 Statuses: prohibition -> active | revoked. commitment -> waiting (its condition is not yet met) | ready (requested or condition met, not yet successfully done) | completed (verified success) | cancelled.
 Also: unclear (true if the latest relevant user statement was ambiguous and the assistant must ask before acting) and failed_attempts (number of failed tool attempts).
@@ -53,7 +66,35 @@ TRANSITION_SCHEMA = {
 }
 
 
-def chrono_line(t: int, ev: dict) -> str:
+def event_hint(ev: dict) -> str:
+    """Action implication of one event, read without any accumulated item state."""
+    op = ev["op"]
+    if op == "prohibit":
+        return "ACTIVE - do NOT perform"
+    if op == "revoke":
+        return "REVOKED - restriction lifted, action allowed"
+    if op == "ambiguous":
+        return "UNCLEAR - ask the user before acting"
+    if op == "commit":
+        return "WAITING - condition not yet met" if ev.get("guard") else "READY - requested, not yet done: perform when asked"
+    if op == "approve":
+        if not ev.get("explicit", True):
+            return "UNCLEAR - ask the user before acting"
+        return ("READY - condition met, not yet done: perform when asked" if ev.get("matches_guard")
+                else "WAITING - condition not yet met")
+    if op == "cancel":
+        return "CANCELLED - do NOT perform"
+    if op == "tool_result":
+        return "COMPLETED - verified success, do NOT repeat" if ev.get("success") else "FAILED - still pending"
+    return ""
+
+
+def chrono_line(t: int, ev: dict, hints: bool = False) -> str:
+    line = _chrono_text(t, ev)
+    return f"{line} => {event_hint(ev)}" if hints else line
+
+
+def _chrono_text(t: int, ev: dict) -> str:
     a = f"[{ev['item']}] {ev.get('tool')}({ev.get('target', '')})"
     op = ev["op"]
     if op == "prohibit":
@@ -95,15 +136,16 @@ class Memory:
     async def observe(self, t: int):
         turn = self.turns[t]
         evs = self.events[t] if self.events is not None else []
-        if self.cond == "pinning" and turn["role"] in ("user", "tool"):
+        if self.cond in PIN_CONDS and turn["role"] in ("user", "tool"):
             words = int(self.ledger_cap * 0.7)
+            system = PIN_HINT_SYSTEM if self.cond == "pinning_hint" else PIN_SYSTEM
             r = await self.llm.chat([
-                {"role": "system", "content": PIN_SYSTEM.format(words=words)},
+                {"role": "system", "content": system.format(words=words)},
                 {"role": "user", "content": f"Current pinned list:\n{self.pinned or '(empty)'}\n\nNew turn:\n{fmt_turn(turn)}"
                                             f"\n\nUpdated pinned list:"}], tag="pin", max_tokens=self.ledger_cap)
             self.pinned = self.tc.truncate(r["text"].strip(), self.ledger_cap)
-        elif self.cond == "chrono":
-            self.chrono += [chrono_line(t, e) for e in evs]
+        elif self.cond in CHRONO_CONDS:
+            self.chrono += [chrono_line(t, e, hints=self.cond == "chrono_hint") for e in evs]
         elif self.reducer is not None:
             self.reducer.apply_all(evs, t)
         elif self.cond == "typed_llm" and evs:
@@ -149,13 +191,14 @@ class Memory:
 
     def block(self) -> tuple[str, bool]:
         """Persistent block kept alongside the summary; returns (text, truncated?)."""
-        if self.cond == "pinning":
+        if self.cond in PIN_CONDS:
             return (f"PINNED RULES:\n{self.pinned}" if self.pinned else ""), False
-        if self.cond == "chrono":
+        if self.cond in CHRONO_CONDS:
             if not self.chrono:
                 return "EVENT LOG: (no events)", False
-            txt = self.tc.keep_lines_within(self.chrono, self.ledger_cap,
-                                            header="EVENT LOG (chronological extracted events; no derived status):")
+            header = ("EVENT LOG (chronological extracted events, each with its own action implication):"
+                      if self.cond == "chrono_hint" else "EVENT LOG (chronological extracted events; no derived status):")
+            txt = self.tc.keep_lines_within(self.chrono, self.ledger_cap, header=header)
             return txt, "older entries dropped" in txt
         items = self.ledger_items()
         if items is None:
@@ -194,8 +237,9 @@ class Memory:
         previous = self._fit_summary(blk)  # under the hard cap, compaction only sees memory the agent actually kept
         sum_budget = max(int(0.4 * self.B), self.B - self.tc.count(blk))
         new = "\n".join(fmt_turn(x) for x in self.turns[self.last_compact + 1:t + 1])
+        system = SUMMARY_HINT_SYSTEM if self.cond == "summary_hint" else SUMMARY_SYSTEM
         r = await self.llm.chat([
-            {"role": "system", "content": SUMMARY_SYSTEM.format(words=int(sum_budget * 0.7))},
+            {"role": "system", "content": system.format(words=int(sum_budget * 0.7))},
             {"role": "user", "content": f"Previous summary:\n{previous or '(none)'}\n\nNew conversation turns:\n{new}"
                                         f"\n\nWrite the updated summary."}], tag="summary", max_tokens=sum_budget)
         self.summary = self.tc.truncate(r["text"].strip(), sum_budget)

@@ -1,0 +1,110 @@
+{
+ "timeline_id": "C09",
+ "primary_family": "COND1",
+ "primary_category": "conditional",
+ "secondary_family": "DONE2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND1",
+   "category": "conditional",
+   "action_id": "N05",
+   "tool": "share_file",
+   "target": "file=security review; recipient=Cobalt auditors",
+   "vp": "share the security review with the Cobalt auditors",
+   "noun": "the security review",
+   "artifact": "security review",
+   "partials": [
+    "threat model",
+    "scope statement",
+    "remediation table"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "N14",
+   "tool": "place_order",
+   "target": "item=conference swag; vendor=Printloop",
+   "vp": "order the conference swag from Printloop",
+   "noun": "the Printloop swag order",
+   "artifact": "swag mockup",
+   "partials": [
+    "t-shirt design",
+    "sticker set",
+    "logo placement"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N06",
+   "tool": "post_message",
+   "target": "channel=#support; text=holiday coverage schedule",
+   "vp": "post the holiday coverage schedule in #support",
+   "noun": "the holiday coverage schedule",
+   "artifact": "holiday coverage schedule",
+   "partials": [
+    "weekend shifts",
+    "on-call list",
+    "contact section"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "approve_final",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

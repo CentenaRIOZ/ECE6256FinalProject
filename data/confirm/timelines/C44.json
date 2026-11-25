@@ -1,0 +1,105 @@
+{
+ "timeline_id": "C44",
+ "primary_family": "DONE2",
+ "primary_category": "completion",
+ "secondary_family": "CANC1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "N05",
+   "tool": "share_file",
+   "target": "file=security review; recipient=Cobalt auditors",
+   "vp": "share the security review with the Cobalt auditors",
+   "noun": "the security review",
+   "artifact": "security review",
+   "partials": [
+    "threat model",
+    "scope statement",
+    "remediation table"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "N12",
+   "tool": "place_order",
+   "target": "item=60 standing desks; vendor=Uplift Supply",
+   "vp": "order the 60 standing desks from Uplift Supply",
+   "noun": "the Uplift desk order",
+   "artifact": "desk proposal",
+   "partials": [
+    "frame options",
+    "surface finish",
+    "installation section"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N21",
+   "tool": "delete_records",
+   "target": "dataset=archived support tickets",
+   "vp": "delete the archived support tickets",
+   "noun": "the archived support tickets",
+   "artifact": "ticket retention memo",
+   "partials": [
+    "date range",
+    "exceptions list",
+    "owner table"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "wait"
+  ],
+  [
+   "cancel",
+   "F1C"
+  ],
+  [
+   "approve_final_archive",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

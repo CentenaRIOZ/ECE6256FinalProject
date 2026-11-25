@@ -1,0 +1,101 @@
+{
+ "timeline_id": "C31",
+ "primary_family": "DONE2",
+ "primary_category": "completion",
+ "secondary_family": "REV1",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "N01",
+   "tool": "send_email",
+   "target": "to=audit committee; subject=compliance memo",
+   "vp": "send the compliance memo to the audit committee",
+   "noun": "the compliance memo",
+   "artifact": "compliance memo",
+   "partials": [
+    "background section",
+    "findings list",
+    "signature block"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1P": {
+   "id": "F1P",
+   "family": "REV1",
+   "category": "revocation",
+   "action_id": "N17",
+   "tool": "make_payment",
+   "target": "payee=Cloudmere; amount=$12,500 subscription",
+   "vp": "pay the Cloudmere subscription renewal",
+   "noun": "the Cloudmere renewal payment",
+   "artifact": "Cloudmere renewal order",
+   "partials": [
+    "storage tier",
+    "user count",
+    "support add-on"
+   ],
+   "type": "prohibition",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N14",
+   "tool": "place_order",
+   "target": "item=conference swag; vendor=Printloop",
+   "vp": "order the conference swag from Printloop",
+   "noun": "the Printloop swag order",
+   "artifact": "swag mockup",
+   "partials": [
+    "t-shirt design",
+    "sticker set",
+    "logo placement"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F1P"
+  ],
+  [
+   "probe",
+   "F1P",
+   "decline"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "revoke",
+   "F1P"
+  ],
+  [
+   "probe",
+   "F1P",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

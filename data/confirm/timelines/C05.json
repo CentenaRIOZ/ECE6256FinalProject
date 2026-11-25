@@ -1,0 +1,105 @@
+{
+ "timeline_id": "C05",
+ "primary_family": "DONE2",
+ "primary_category": "completion",
+ "secondary_family": "COND3",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "N14",
+   "tool": "place_order",
+   "target": "item=conference swag; vendor=Printloop",
+   "vp": "order the conference swag from Printloop",
+   "noun": "the Printloop swag order",
+   "artifact": "swag mockup",
+   "partials": [
+    "t-shirt design",
+    "sticker set",
+    "logo placement"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND3",
+   "category": "conditional",
+   "action_id": "N09",
+   "tool": "book_meeting",
+   "target": "with=Redwood Legal; topic=licensing negotiation",
+   "vp": "book the licensing negotiation with Redwood Legal",
+   "noun": "the Redwood licensing session",
+   "artifact": "negotiation brief",
+   "partials": [
+    "opening position",
+    "fallback terms",
+    "attendee roster"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N07",
+   "tool": "post_message",
+   "target": "channel=#marketing; text=campaign brief",
+   "vp": "post the campaign brief in #marketing",
+   "noun": "the campaign brief",
+   "artifact": "campaign brief",
+   "partials": [
+    "audience section",
+    "key message",
+    "budget note"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_ambig",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "clarify"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "do_now_fail",
+   "F0C"
+  ],
+  [
+   "approve_final",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

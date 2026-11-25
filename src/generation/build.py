@@ -2,9 +2,11 @@
 
 python -m src.generation.build --out data --n-timelines 48 --seed 0
 python -m src.generation.build --fresh --out data/fresh --n-per-family 4 --seed 20261121
+python -m src.generation.build --confirm --out data/confirm --n-per-family 4 --seed 20261123
 
 --fresh builds new test timelines balanced over the 13 primary families, without paraphrases. The same dialogues
 are written with compaction points spread over the dialogue, confined to its first half, or to its second half.
+--confirm builds balanced timelines from a separate action library and separate surface text.
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import random
 from pathlib import Path
 
 from src.generation import content as C
+from src.generation import content_newlang as NC
 from src.ledger.reducer import Reducer, gold_decision, status_label, label_history
 
 # --------------------------------------------------------------------------- families
@@ -61,7 +64,7 @@ def slot_type(kind: str) -> str:
 
 # --------------------------------------------------------------------------- timelines
 def make_timeline(idx: int, rng: random.Random, primary: str | None = None, timeline_id: str | None = None,
-                  split: str | None = None) -> dict:
+                  split: str | None = None, content=C) -> dict:
     cats = list(CATEGORY_FAMILIES)
     if primary is None:
         primary_cat = cats[idx % 3]
@@ -75,7 +78,7 @@ def make_timeline(idx: int, rng: random.Random, primary: str | None = None, time
 
     # one distinct tool per item
     actions_by_tool: dict[str, list] = {}
-    for a in C.ACTIONS:
+    for a in content.ACTIONS:
         actions_by_tool.setdefault(a["tool"], []).append(a)
     tools = rng.sample(list(actions_by_tool), k=8)
     items, steps_per_family = {}, []
@@ -110,17 +113,20 @@ def make_timeline(idx: int, rng: random.Random, primary: str | None = None, time
                 split=split or ("dev" if idx % 4 == 0 else "test"))
 
 
-def fresh_timelines(n_per_family: int, seed: int) -> list[dict]:
+def fresh_timelines(n_per_family: int, seed: int, prefix: str = "F", content=C) -> list[dict]:
     rng = random.Random(seed)
     families = [f for fams in CATEGORY_FAMILIES.values() for f in fams]
-    return [make_timeline(i, rng, primary=families[i % len(families)], timeline_id=f"F{i:02d}", split="test")
+    return [make_timeline(i, rng, primary=families[i % len(families)], timeline_id=f"{prefix}{i:02d}", split="test",
+                          content=content)
             for i in range(n_per_family * len(families))]
 
 
 # --------------------------------------------------------------------------- rendering
 class Renderer:
-    def __init__(self, tl: dict, variant: int, seed: int, placement: str = "spread"):
+    def __init__(self, tl: dict, variant: int, seed: int, placement: str = "spread", content=C,
+                 all_templates: bool = False):
         self.tl, self.variant, self.placement = tl, variant, placement
+        self.C, self.all_templates = content, all_templates
         self.rng = random.Random(f"{seed}-{tl['timeline_id']}-{variant}")
         self.split = tl["split"]
         self.turns: list[dict] = []
@@ -129,6 +135,8 @@ class Renderer:
         self.receipt = self.rng.randint(10000, 90000)
 
     def pick(self, options: list[str]) -> str:
+        if self.all_templates:
+            return self.rng.choice(options)
         sub = options[0::2] if self.split == "dev" else options[1::2]
         return self.rng.choice(sub or options)
 
@@ -144,24 +152,24 @@ class Renderer:
         if ok:
             txt = f"[TOOL RESULT] {it['tool']}({it['target']}) -> status=SUCCESS, receipt_id=R-{self.receipt}"
         else:
-            err = self.rng.choice(C.ERRORS)
+            err = self.rng.choice(self.C.ERRORS)
             txt = f"[TOOL RESULT] {it['tool']}({it['target']}) -> status=FAILED, error=\"{err}\""
         self.add("tool", txt, "tool", [dict(op="tool_result", item=it["id"], success=ok)], it["id"])
-        ack = self.rng.choice(C.ACK["result_ok" if ok else "result_fail"])
+        ack = self.rng.choice(self.C.ACK["result_ok" if ok else "result_fail"])
         self.add("assistant", ack.format(err=txt.split('error="')[-1].rstrip('"') if not ok else ""), "ack", item=it["id"])
 
     def user_ack(self, key: str, it: dict, events: list, ack_key: str | None = None, **kw):
-        tpl = self.pick(C.T[key])
-        self.add("user", self.fmt(tpl, it, **kw), "event", events, it["id"], template=f"{key}:{C.T[key].index(tpl)}")
-        self.add("assistant", self.fmt(self.rng.choice(C.ACK[ack_key or key]), it, **kw), "ack", item=it["id"])
+        tpl = self.pick(self.C.T[key])
+        self.add("user", self.fmt(tpl, it, **kw), "event", events, it["id"], template=f"{key}:{self.C.T[key].index(tpl)}")
+        self.add("assistant", self.fmt(self.rng.choice(self.C.ACK[ack_key or key]), it, **kw), "ack", item=it["id"])
 
     def filler(self):
         if self.rng.random() < 0.2:
             it = self.rng.choice(list(self.tl["items"].values()))
-            q, a = self.rng.choice(C.FILLER_ENTITY)
+            q, a = self.rng.choice(self.C.FILLER_ENTITY)
             q, a = self.fmt(q, it), self.fmt(a, it)
         else:
-            q, a = self.rng.choice(C.FILLER)
+            q, a = self.rng.choice(self.C.FILLER)
         self.add("user", q, "filler")
         self.add("assistant", a, "filler")
 
@@ -180,7 +188,7 @@ class Renderer:
             self.user_ack("do_now", it, [dict(op="commit", item=iid, guard=None, **ev_create)])
             self.tool_turn(it, kind == "do_now_ok")
         elif kind == "retry_ok":
-            self.add("assistant", self.fmt(self.rng.choice(C.ACK["retry"]), it), "ack", item=iid)
+            self.add("assistant", self.fmt(self.rng.choice(self.C.ACK["retry"]), it), "ack", item=iid)
             self.tool_turn(it, True)
         elif kind == "commit_cond":
             self.user_ack(kind, it, [dict(op="commit", item=iid, guard=guard, **ev_create)])
@@ -206,7 +214,7 @@ class Renderer:
         elif kind == "probe":
             pkind = self.rng.choice(["teammate", "workflow"] if it["type"] == "prohibition"
                                     else ["workflow", "reminder", "teammate"])
-            text = self.pick(C.PROBE[pkind]).format(vp=it["vp"], mate=self.rng.choice(C.TEAMMATES))
+            text = self.pick(self.C.PROBE[pkind]).format(vp=it["vp"], mate=self.rng.choice(self.C.TEAMMATES))
             self.probes.append(dict(item=iid, kind=pkind, text=text, after_turn=len(self.turns) - 1,
                                     expected=st[2], family=it["family"], category=it["category"]))
         else:
@@ -280,9 +288,22 @@ def main():
     ap.add_argument("--n-timelines", type=int, default=48)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fresh", action="store_true")
+    ap.add_argument("--confirm", action="store_true")
     ap.add_argument("--n-per-family", type=int, default=4)
     args = ap.parse_args()
     out = Path(args.out)
+    if args.confirm:
+        (out / "timelines").mkdir(parents=True, exist_ok=True)
+        timelines = fresh_timelines(args.n_per_family, args.seed, prefix="C", content=NC)
+        for tl in timelines:
+            (out / "timelines" / f"{tl['timeline_id']}.json").write_text(json.dumps(tl, indent=1))
+        rendered = [Renderer(tl, v, args.seed, "spread", NC, True).render() for tl in timelines
+                    for v in range(len(VARIANT_COMPACTIONS))]
+        with (out / "dialogues.jsonl").open("w") as f:
+            for d in rendered:
+                f.write(json.dumps(d) + "\n")
+        print(f"confirm: {len(rendered)} dialogues, {sum(len(d['probes']) for d in rendered)} probes")
+        return
     if args.fresh:
         (out / "timelines").mkdir(parents=True, exist_ok=True)
         timelines = fresh_timelines(args.n_per_family, args.seed)

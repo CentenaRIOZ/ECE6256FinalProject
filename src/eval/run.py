@@ -19,7 +19,7 @@ from src.memory.managers import CONDITIONS, LEDGER_CONDS, Memory
 from src.policy.policy import decide, state_query
 
 NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict",
-                    "lifecycle_nohint"}
+                    "lifecycle_nohint", "chrono_hint"}
 
 
 def load_dialogues(path: str, split: str | None, limit: int | None) -> list[dict]:
@@ -84,7 +84,7 @@ async def main_async(args):
     extractions = {}
     if NEEDS_EXTRACTION & set(conds):
         ex_path = out / "extractions.jsonl"
-        res = await asyncio.gather(*[extract_dialogue(llm, d) for d in dlgs])
+        res = await asyncio.gather(*[extract_dialogue(llm, d, version=args.extract_version) for d in dlgs])
         with ex_path.open("w") as f:
             for d, ev in zip(dlgs, res):
                 extractions[d["dialogue_id"]] = ev
@@ -116,7 +116,8 @@ async def main_async(args):
             for r in rows:
                 f.write(json.dumps(r) + "\n")
     llm.close()
-    meta = dict(config=cfg, conditions=conds, budget=budget, hard_cap=args.hard_cap, n_dialogues=len(dlgs),
+    meta = dict(config=cfg, conditions=conds, budget=budget, hard_cap=args.hard_cap, extract_version=args.extract_version,
+                n_dialogues=len(dlgs),
                 wall_seconds=time.time() - t0,
                 gpu=gpu_info(), usage={k: dict(v) for k, v in llm.stats.items()})
     (out / f"meta_B{budget}.json").write_text(json.dumps(meta, indent=1))
@@ -134,6 +135,7 @@ def main():
     ap.add_argument("--run-name")
     ap.add_argument("--cache", help="override the config's LLM cache path")
     ap.add_argument("--hard-cap", action="store_true", help="enforce summary + persistent block <= budget at every probe")
+    ap.add_argument("--extract-version", type=int, choices=[1, 2], default=1)
     asyncio.run(main_async(ap.parse_args()))
 
 

@@ -1,0 +1,123 @@
+{
+ "timeline_id": "C17",
+ "primary_family": "DONE1",
+ "primary_category": "completion",
+ "secondary_family": "REV4",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "DONE1",
+   "category": "completion",
+   "action_id": "N05",
+   "tool": "share_file",
+   "target": "file=security review; recipient=Cobalt auditors",
+   "vp": "share the security review with the Cobalt auditors",
+   "noun": "the security review",
+   "artifact": "security review",
+   "partials": [
+    "threat model",
+    "scope statement",
+    "remediation table"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1P": {
+   "id": "F1P",
+   "family": "REV4",
+   "category": "revocation",
+   "action_id": "N14",
+   "tool": "place_order",
+   "target": "item=conference swag; vendor=Printloop",
+   "vp": "order the conference swag from Printloop",
+   "noun": "the Printloop swag order",
+   "artifact": "swag mockup",
+   "partials": [
+    "t-shirt design",
+    "sticker set",
+    "logo placement"
+   ],
+   "type": "prohibition",
+   "mutable": true
+  },
+  "F1Q": {
+   "id": "F1Q",
+   "family": "REV4",
+   "category": "revocation",
+   "action_id": "N00",
+   "tool": "send_email",
+   "target": "to=Priya Raman; subject=vendor scorecard",
+   "vp": "email the vendor scorecard to Priya Raman",
+   "noun": "the vendor scorecard",
+   "artifact": "vendor scorecard",
+   "partials": [
+    "ratings grid",
+    "cover note",
+    "delivery metrics"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N18",
+   "tool": "publish_post",
+   "target": "platform=engineering blog; title=migration retrospective",
+   "vp": "publish the migration retrospective on the engineering blog",
+   "noun": "the migration retrospective",
+   "artifact": "migration retrospective",
+   "partials": [
+    "lessons learned",
+    "architecture figure",
+    "opening anecdote"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "prohibit",
+   "F1P"
+  ],
+  [
+   "prohibit",
+   "F1Q"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "revoke",
+   "F1P"
+  ],
+  [
+   "probe",
+   "F1P",
+   "act"
+  ],
+  [
+   "do_now_ok",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1Q",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

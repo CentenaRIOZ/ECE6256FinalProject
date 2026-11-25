@@ -1,10 +1,12 @@
 import json
 import random
 
-from src.extraction.extractor import Registry
+from src.extraction.extractor import EXTRACT_PROMPTS, EXTRACT_SYSTEM, Registry
+from src.generation import content as C
+from src.generation import content_newlang as NC
 from src.generation.build import CATEGORY_FAMILIES, FAMILIES, Renderer, fresh_timelines, make_timeline
 from src.ledger.reducer import Reducer, ReducerConfig, gold_decision, label_history, render_item, status_label
-from src.memory.managers import Memory
+from src.memory.managers import Memory, PIN_HINT_SYSTEM, SUMMARY_HINT_SYSTEM, chrono_line
 
 
 def item(r, iid):
@@ -142,8 +144,48 @@ def test_fresh_timelines_are_balanced_and_placement_only_moves_compactions():
         assert max(early["compaction_after"]) < min(late["compaction_after"])
 
 
+def test_chrono_hint_is_event_local():
+    cancel = chrono_line(3, dict(op="cancel", item="C", tool="send_email", target="report"), hints=True)
+    late_approval = chrono_line(4, dict(op="approve", item="C", tool="send_email", target="report", object="final",
+                                        explicit=True, matches_guard=True), hints=True)
+    assert cancel.endswith("CANCELLED - do NOT perform")
+    assert late_approval.endswith("READY - condition met, not yet done: perform when asked")
+    assert "=>" not in chrono_line(3, dict(op="cancel", item="C", tool="send_email", target="report"))
+
+
+def test_hint_prompts_and_extraction_versions_format():
+    for prompt in (SUMMARY_HINT_SYSTEM, PIN_HINT_SYSTEM):
+        assert "COMPLETED - verified success" in prompt.format(words=100)
+    assert EXTRACT_PROMPTS[1] == EXTRACT_SYSTEM
+    v2 = EXTRACT_PROMPTS[2].format(tools="- send_email")
+    assert "still explicit = true" in v2 and "emit ambiguous, not approve" in v2
+    assert "I approve the captions" in v2
+
+
+def test_confirm_surface_is_separate_and_valid():
+    assert not {a["vp"] for a in C.ACTIONS} & {a["vp"] for a in NC.ACTIONS}
+    for key in C.T:
+        assert not set(C.T[key]) & set(NC.T[key])
+    assert set(C.T) == set(NC.T) and set(C.ACK) == set(NC.ACK) and set(C.PROBE) == set(NC.PROBE)
+    timelines = fresh_timelines(1, 11, prefix="C", content=NC)
+    for tl in timelines:
+        for variant in range(4):
+            dialogue = Renderer(tl, variant, 11, "spread", NC, True).render()
+            assert dialogue["timeline_id"].startswith("C") and dialogue["probes"]
+            json.dumps(dialogue)
+
+
 def test_default_memory_is_unchanged_without_hard_cap():
     mem, tc = _capped_memory(hard_cap=False)
     ctx = mem.context(0)
     assert mem.summary in ctx["memory"] and tc.count(ctx["memory"]) > 40
     assert not ctx["summary_capped"]
+
+
+def test_reports_include_only_models_with_complete_runs(tmp_path):
+    from src.eval.models import available
+    for run in ("qwen2.5-7b-pace-confirm-v1", "qwen2.5-7b-pace-confirm-v2", "mistral-7b-v0.3-pace-confirm-v1"):
+        (tmp_path / run).mkdir()
+        (tmp_path / run / "probes_B384.jsonl").write_text("")
+    assert available(tmp_path, ["-pace-confirm-v1", "-pace-confirm-v2"]) == {"Qwen": "qwen2.5-7b"}
+    assert set(available(tmp_path, ["-pace-confirm-v1"])) == {"Qwen", "Mistral"}

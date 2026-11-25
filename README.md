@@ -58,8 +58,9 @@ Ablations: transition logic, tool-success evidence, compaction count and locatio
 - **Xiuping Zhu:** evaluation harness, statistics, error analysis, reproducibility
 
 ## Results (test split, 664 probes, B=384)
-Full report: [`results/report_B384.md`](results/report_B384.md). Paper: [`paper/main.pdf`](paper/main.pdf). Poster: [`poster/poster.pdf`](poster/poster.pdf).
+Numbers in this README and in `docs/` are copied from result files. Those files, the raw run records, and logs are generated locally under `results/` by the commands below and are not stored in git. Paper: [`paper/main.pdf`](paper/main.pdf). Poster: [`poster/poster.pdf`](poster/poster.pdf).
 PACE-ICE control experiments and their interpretation: [`docs/pace_experiments.md`](docs/pace_experiments.md).
+Post-milestone confirmation, extraction, and third-model (Mistral-7B) results: [`docs/post_milestone_results.md`](docs/post_milestone_results.md).
 
 | Condition | Qwen2.5-7B acc. | Llama-3.1-8B acc. |
 |---|---|---|
@@ -105,6 +106,15 @@ Individual steps:
 | PACE-ICE budget, fresh-data, and placement runs | `sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml extended`, then the same with `configs/llama8b.yaml` |
 | Extended report | `python -m src.eval.extended_report --out results/extended` |
 | Error attribution and approval extraction | `python -m src.eval.error_analysis --out results/extended` |
+| New-language Confirm data | `python -m src.generation.build --confirm --out data/confirm --n-per-family 4 --seed 20261123` |
+| PACE-ICE post-milestone runs | `sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml dev`, then `confirm`, `replicate`, and `v2-robust`; repeat with `configs/llama8b.yaml` |
+| Dev extraction comparison | `python -m src.eval.dev_extraction_report --runs results/runs` |
+| Planned confirmation tests | `python -m src.eval.confirm_report --out results/confirm` |
+| Exploratory replication | `python -m src.eval.replication_report --out results/confirm` |
+| v2 robustness, disaggregation, and RQ1 | `python -m src.eval.post_milestone_analysis --out results/confirm` |
+| Real error examples | `python -m src.eval.error_examples --out results/confirm/error_examples.md` |
+| PACE-ICE third model (Mistral-7B, plan in `docs/third_model_plan.md`) | `sbatch scripts/pace_download.sbatch mistralai/Mistral-7B-Instruct-v0.3`, then `sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml hardcap,extended,replicate,v2-robust` and `CACHE_SUFFIX=confirm sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml confirm` |
+| Three-model accuracy and extraction | `python -m src.eval.three_model_report --out results/confirm` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.
@@ -145,6 +155,6 @@ src/
   eval/        run.py, analyze.py, extraction_eval.py, budget_sweep.py
 configs/     model / budget configs (dev_* = dev split)
 scripts/     serve_vllm.sh, run_all.sh, pace_run.sbatch
-results/     runs/ (raw probe outputs), tables/, figures/, report_B*.md
+results/     generated locally, not in git: runs/ (raw probe outputs), reports, tables, figures
 paper/ poster/
 ```

@@ -1,0 +1,114 @@
+{
+ "timeline_id": "C48",
+ "primary_family": "COND1",
+ "primary_category": "conditional",
+ "secondary_family": "COND5",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "COND1",
+   "category": "conditional",
+   "action_id": "N02",
+   "tool": "send_email",
+   "target": "to=Tomas Novak; subject=relocation packet",
+   "vp": "email the relocation packet to Tomas Novak",
+   "noun": "Tomas's relocation packet",
+   "artifact": "relocation packet",
+   "partials": [
+    "moving allowance",
+    "housing page",
+    "visa checklist"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND5",
+   "category": "completion",
+   "action_id": "N11",
+   "tool": "book_meeting",
+   "target": "with=Amara Okafor; topic=promotion discussion",
+   "vp": "book the promotion discussion with Amara Okafor",
+   "noun": "Amara's promotion discussion",
+   "artifact": "promotion dossier",
+   "partials": [
+    "project highlights",
+    "manager comments",
+    "level rubric"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N15",
+   "tool": "make_payment",
+   "target": "payee=Ridgeline Logistics; amount=$3,750",
+   "vp": "pay the $3,750 Ridgeline Logistics invoice",
+   "noun": "the Ridgeline invoice",
+   "artifact": "Ridgeline invoice",
+   "partials": [
+    "freight charges",
+    "fuel surcharge",
+    "customs line"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "approve_partial",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "approve_final",
+   "F0C"
+  ],
+  [
+   "approve_final_exec_fail",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "probe",
+   "F0C",
+   "act"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

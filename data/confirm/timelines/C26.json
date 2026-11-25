@@ -1,0 +1,110 @@
+{
+ "timeline_id": "C26",
+ "primary_family": "REV1",
+ "primary_category": "revocation",
+ "secondary_family": "DONE3",
+ "items": {
+  "F0P": {
+   "id": "F0P",
+   "family": "REV1",
+   "category": "revocation",
+   "action_id": "N16",
+   "tool": "make_payment",
+   "target": "payee=Nadia Hassan; amount=$6,200",
+   "vp": "pay Nadia Hassan the $6,200 consulting fee",
+   "noun": "Nadia's consulting payment",
+   "artifact": "consulting statement from Nadia Hassan",
+   "partials": [
+    "March hours",
+    "day rate",
+    "travel expenses"
+   ],
+   "type": "prohibition",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE3",
+   "category": "completion",
+   "action_id": "N13",
+   "tool": "place_order",
+   "target": "item=25 monitors; vendor=Viewcrest",
+   "vp": "order the 25 monitors from Viewcrest",
+   "noun": "the Viewcrest monitor order",
+   "artifact": "monitor requisition",
+   "partials": [
+    "panel type",
+    "stand options",
+    "warranty terms"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N01",
+   "tool": "send_email",
+   "target": "to=audit committee; subject=compliance memo",
+   "vp": "send the compliance memo to the audit committee",
+   "noun": "the compliance memo",
+   "artifact": "compliance memo",
+   "partials": [
+    "background section",
+    "findings list",
+    "signature block"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F0P"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "retry_ok",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F0P",
+   "decline"
+  ],
+  [
+   "revoke",
+   "F0P"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "probe",
+   "F0P",
+   "act"
+  ],
+  [
+   "probe",
+   "F1C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

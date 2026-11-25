@@ -1,0 +1,105 @@
+{
+ "timeline_id": "C25",
+ "primary_family": "CANC1",
+ "primary_category": "conditional",
+ "secondary_family": "DONE2",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "N07",
+   "tool": "post_message",
+   "target": "channel=#marketing; text=campaign brief",
+   "vp": "post the campaign brief in #marketing",
+   "noun": "the campaign brief",
+   "artifact": "campaign brief",
+   "partials": [
+    "audience section",
+    "key message",
+    "budget note"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "DONE2",
+   "category": "completion",
+   "action_id": "N15",
+   "tool": "make_payment",
+   "target": "payee=Ridgeline Logistics; amount=$3,750",
+   "vp": "pay the $3,750 Ridgeline Logistics invoice",
+   "noun": "the Ridgeline invoice",
+   "artifact": "Ridgeline invoice",
+   "partials": [
+    "freight charges",
+    "fuel surcharge",
+    "customs line"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N18",
+   "tool": "publish_post",
+   "target": "platform=engineering blog; title=migration retrospective",
+   "vp": "publish the migration retrospective on the engineering blog",
+   "noun": "the migration retrospective",
+   "artifact": "migration retrospective",
+   "partials": [
+    "lessons learned",
+    "architecture figure",
+    "opening anecdote"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "do_now_fail",
+   "F1C"
+  ],
+  [
+   "cancel",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ],
+  [
+   "approve_final_archive",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ]
+ ],
+ "split": "test"
+}

@@ -5,19 +5,8 @@ cache/
 logs/
 *.log
 .ipynb_checkpoints/
-!results/runs/
-results/runs/*
-!results/runs/qwen2.5-7b/
-!results/runs/llama3.1-8b/
-!results/runs/qwen2.5-7b-strict/
-!results/runs/llama3.1-8b-strict/
-!results/runs/qwen2.5-7b-pace-nocap/
-!results/runs/llama3.1-8b-pace-nocap/
-!results/runs/qwen2.5-7b-pace-hardcap/
-!results/runs/llama3.1-8b-pace-hardcap/
-!results/runs/*-pace-fresh-spread/
-!results/runs/*-pace-fresh-early/
-!results/runs/*-pace-fresh-late/
+# Experiment outputs, run records, and figures are kept locally, not in git.
+results/
 paper/*.aux
 paper/*.log
 paper/*.bbl

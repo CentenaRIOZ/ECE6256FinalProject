@@ -1,0 +1,109 @@
+{
+ "timeline_id": "C38",
+ "primary_family": "CANC1",
+ "primary_category": "conditional",
+ "secondary_family": "COND5",
+ "items": {
+  "F0C": {
+   "id": "F0C",
+   "family": "CANC1",
+   "category": "conditional",
+   "action_id": "N01",
+   "tool": "send_email",
+   "target": "to=audit committee; subject=compliance memo",
+   "vp": "send the compliance memo to the audit committee",
+   "noun": "the compliance memo",
+   "artifact": "compliance memo",
+   "partials": [
+    "background section",
+    "findings list",
+    "signature block"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F1C": {
+   "id": "F1C",
+   "family": "COND5",
+   "category": "completion",
+   "action_id": "N19",
+   "tool": "publish_post",
+   "target": "platform=X; title=feature announcement",
+   "vp": "publish the feature announcement on X",
+   "noun": "the feature announcement",
+   "artifact": "feature announcement",
+   "partials": [
+    "hook line",
+    "demo clip",
+    "call to action"
+   ],
+   "type": "commitment",
+   "mutable": true
+  },
+  "F2S": {
+   "id": "F2S",
+   "family": "STAT",
+   "category": "static",
+   "action_id": "N11",
+   "tool": "book_meeting",
+   "target": "with=Amara Okafor; topic=promotion discussion",
+   "vp": "book the promotion discussion with Amara Okafor",
+   "noun": "Amara's promotion discussion",
+   "artifact": "promotion dossier",
+   "partials": [
+    "project highlights",
+    "manager comments",
+    "level rubric"
+   ],
+   "type": "prohibition",
+   "mutable": false
+  }
+ },
+ "steps": [
+  [
+   "commit_cond",
+   "F1C"
+  ],
+  [
+   "prohibit",
+   "F2S"
+  ],
+  [
+   "commit_cond",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "wait"
+  ],
+  [
+   "approve_final_exec_fail",
+   "F1C"
+  ],
+  [
+   "probe",
+   "F2S",
+   "decline"
+  ],
+  [
+   "cancel",
+   "F0C"
+  ],
+  [
+   "approve_final_archive",
+   "F0C"
+  ],
+  [
+   "probe",
+   "F0C",
+   "decline"
+  ],
+  [
+   "probe",
+   "F1C",
+   "act"
+  ]
+ ],
+ "split": "test"
+}

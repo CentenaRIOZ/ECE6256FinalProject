@@ -63,6 +63,30 @@ NEW TURN: [turn 20] TOOL: [TOOL RESULT] send_email(to=Ana; subject=trip photos) 
 -> {{"events": [{{"op": "tool_result", "item": "I2", "tool": "send_email", "target": "to=Ana; subject=trip photos", "success": false}}]}}
 """
 
+EXTRACT_SYSTEM_V2 = EXTRACT_SYSTEM.replace(
+    "explicit = true for a clear, unhedged approval.",
+    "explicit = false ONLY when the user is unsure about the approval itself (for example maybe, probably, I think); clearly "
+    "approving a part, section or draft is still explicit = true with matches_guard = false.",
+).replace(
+    "- Refer to tracked items by their id.",
+    "- If the user says a tracked document may be ready but asks to be consulted first, emit ambiguous, not approve.\n"
+    "- Refer to tracked items by their id.",
+).replace(
+    "Tracked: I1 [prohibition] make_payment(payee=gym; membership renewal)\nNEW TURN: [turn 5]",
+    """Tracked: I1 [commitment] post_message(channel=#random; text=holiday photos) condition: user approves the final photo selection
+NEW TURN: [turn 10] USER: I approve the captions. I still need to review everything else.
+-> {{"events": [{{"op": "approve", "item": "I1", "object": "captions", "explicit": true, "matches_guard": false}}]}}
+
+Tracked: I1 [commitment] post_message(channel=#random; text=holiday photos) condition: user approves the final photo selection
+NEW TURN: [turn 12] USER: The photo selection might be final, but ask me before you use it.
+-> {{"events": [{{"op": "ambiguous", "item": "I1"}}]}}
+
+Tracked: I1 [prohibition] make_payment(payee=gym; membership renewal)
+NEW TURN: [turn 5]""",
+    1,
+)
+EXTRACT_PROMPTS = {1: EXTRACT_SYSTEM, 2: EXTRACT_SYSTEM_V2}
+
 EXTRACT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -160,10 +184,10 @@ class Registry:
         return out
 
 
-async def extract_dialogue(llm, dlg: dict) -> list[list[dict]]:
+async def extract_dialogue(llm, dlg: dict, version: int = 1) -> list[list[dict]]:
     """Returns resolved events per turn (list aligned with dlg['turns'])."""
     reg = Registry()
-    system = EXTRACT_SYSTEM.format(tools="\n".join(f"- {v}" for v in TOOLS.values()))
+    system = EXTRACT_PROMPTS[version].format(tools="\n".join(f"- {v}" for v in TOOLS.values()))
     per_turn: list[list[dict]] = []
     turns = dlg["turns"]
     for t in turns:
