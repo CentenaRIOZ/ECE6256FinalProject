@@ -3,6 +3,7 @@ response cache (reproducibility + cheap reruns), JSON-schema constrained decodin
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import os
@@ -39,6 +40,10 @@ class Cache:
         self.db.close()
 
 
+# The memory condition a call belongs to; run.py sets it per task so usage can be split by condition.
+CONDITION: contextvars.ContextVar[str] = contextvars.ContextVar("condition", default="")
+
+
 class LLM:
     def __init__(self, model: str, base_url: str = "http://localhost:8000/v1", cache_path: str = "cache/llm.sqlite",
                  max_concurrency: int = 128, api_key: str | None = None, timeout: float = 300,
@@ -51,6 +56,8 @@ class LLM:
         self.cache = Cache(cache_path)
         self.sem = asyncio.Semaphore(max_concurrency)
         self.stats = defaultdict(lambda: defaultdict(float))  # tag -> counters
+        # condition -> tag -> counters; every call counts, including cache hits and shared in-flight requests
+        self.by_condition = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
         # Identical requests in flight share one response, so the cache holds exactly what every caller used.
         self._inflight: dict[str, asyncio.Future] = {}
 
@@ -63,6 +70,9 @@ class LLM:
         if hit is None and self.cache_only:
             self.stats[tag]["cache_miss"] += 1
             self.stats[tag]["calls"] += 1
+            c = self.by_condition[CONDITION.get()][tag]
+            c["cache_miss"] += 1
+            c["calls"] += 1
             return dict(text="", prompt_tokens=0, completion_tokens=0, latency=0.0, cached=False)
         if hit is None and key in self._inflight:
             hit = dict(await asyncio.shield(self._inflight[key]))
@@ -89,6 +99,10 @@ class LLM:
         s["prompt_tokens"] += hit["prompt_tokens"]
         s["completion_tokens"] += hit["completion_tokens"]
         s["latency"] += hit["latency"]
+        c = self.by_condition[CONDITION.get()][tag]
+        for k in ("prompt_tokens", "completion_tokens", "latency"):
+            c[k] += hit[k]
+        c["calls"] += 1
         return dict(hit, cached=cached)
 
     async def _request(self, messages, max_tokens, temperature, json_schema) -> dict:

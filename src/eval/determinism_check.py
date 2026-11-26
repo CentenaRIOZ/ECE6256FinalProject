@@ -3,7 +3,8 @@
 python -m src.eval.determinism_check results/runs/qwen2.5-7b-det1-pace-confirm-v1 results/runs/qwen2.5-7b-det2-pace-confirm-v1
 
 Every probe field except latency must match, and so must the extracted events. Prints one line per run pair and exits
-with status 1 if any pair differs.
+with status 1 if any pair differs. --shared-conditions compares only the conditions both runs contain, for a run that
+repeats some conditions of a larger one.
 """
 from __future__ import annotations
 
@@ -21,7 +22,12 @@ def records(path: Path) -> dict:
     return {(r["condition"], r["probe_id"]): {k: v for k, v in r.items() if k not in IGNORED} for r in rows}
 
 
-def compare(a: Path, b: Path, common_only: bool = False) -> dict:
+def shared(ra: dict, rb: dict) -> tuple[dict, dict]:
+    conds = {k[0] for k in ra} & {k[0] for k in rb}
+    return {k: v for k, v in ra.items() if k[0] in conds}, {k: v for k, v in rb.items() if k[0] in conds}
+
+
+def compare(a: Path, b: Path, common_only: bool = False, shared_conditions: bool = False) -> dict:
     out = dict(a=a.name, b=b.name)
     names_a, names_b = {p.name for p in a.glob("probes_B*.jsonl")}, {p.name for p in b.glob("probes_B*.jsonl")}
     unmatched = sorted(names_a ^ names_b)
@@ -30,6 +36,8 @@ def compare(a: Path, b: Path, common_only: bool = False) -> dict:
     for name in sorted(names_a & names_b):
         probes = a / name
         ra, rb = records(probes), records(b / probes.name)
+        if shared_conditions:
+            ra, rb = shared(ra, rb)
         differing = [k for k in ra.keys() | rb.keys() if ra.get(k) != rb.get(k)]
         fields = sorted({f for k in differing if k in ra and k in rb for f in ra[k] if ra[k][f] != rb[k].get(f)})
         out[probes.stem] = dict(rows=len(ra), other_rows=len(rb), differing=len(differing), fields=fields)
@@ -46,12 +54,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pairs", nargs="+", help="run directories, two per comparison")
     ap.add_argument("--common-only", action="store_true", help="compare only budgets present in both runs")
+    ap.add_argument("--shared-conditions", action="store_true", help="compare only conditions present in both runs")
     a = ap.parse_args()
     if len(a.pairs) % 2:
         ap.error("give run directories in pairs")
     ok = True
     for x, y in zip(a.pairs[::2], a.pairs[1::2]):
-        result = compare(Path(x), Path(y), a.common_only)
+        result = compare(Path(x), Path(y), a.common_only, a.shared_conditions)
         ok &= result["identical"]
         print(json.dumps(result))
     sys.exit(0 if ok else 1)

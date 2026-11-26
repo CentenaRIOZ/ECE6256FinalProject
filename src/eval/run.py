@@ -1,6 +1,9 @@
 """Run memory conditions over dialogues and score decisions at probe checkpoints.
 
 python -m src.eval.run --config configs/qwen7b.yaml [--conditions summary,lifecycle] [--split test] [--limit 10]
+
+Event-based conditions normally use events extracted by the run's own model. --events-from takes them from another
+run's extractions.jsonl, and --gold-noise uses gold events with controlled errors (src/extraction/noise.py).
 """
 from __future__ import annotations
 
@@ -16,12 +19,10 @@ from pathlib import Path
 import yaml
 
 from src.extraction.extractor import extract_dialogue, gold_events
-from src.llm.client import LLM, TokenCounter, model_revision
-from src.memory.managers import CONDITIONS, LEDGER_CONDS, Memory
+from src.extraction.noise import noisy_gold_events, parse_spec
+from src.llm.client import CONDITION, LLM, TokenCounter, model_revision
+from src.memory.managers import CONDITIONS, LEDGER_CONDS, NEEDS_EXTRACTION, Memory
 from src.policy.policy import decide, state_query
-
-NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict",
-                    "lifecycle_nohint", "chrono_hint"}
 
 
 def load_dialogues(path: str, split: str | None, limit: int | None) -> list[dict]:
@@ -58,6 +59,26 @@ async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events, hard_cap: 
                 summary=mem.summary if p is dlg["probes"][-1] else None,
             ))
     return rows
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def events_from_file(path: str, dlgs: list[dict], data: str) -> tuple[dict, dict]:
+    """Per-turn events of another run, checked against these dialogues, and a record of where they came from."""
+    src = Path(path)
+    rows = {r["dialogue_id"]: r["events"] for r in map(json.loads, src.open())}
+    for d in dlgs:
+        assert d["dialogue_id"] in rows, f"{path} has no events for {d['dialogue_id']}"
+        assert len(rows[d["dialogue_id"]]) == len(d["turns"]), f"{path}: turn count differs for {d['dialogue_id']}"
+    metas = sorted(src.parent.glob("meta_B*.json"))
+    meta = json.loads(metas[0].read_text()) if metas else {}
+    source_data = meta.get("args", {}).get("data")
+    assert source_data in (None, data), f"{path} was extracted from {source_data}, not {data}"
+    record = dict(kind="file", path=str(path), sha256=sha256_file(src), model=meta.get("config", {}).get("model"),
+                  extract_version=meta.get("extract_version"), data=source_data)
+    return {d["dialogue_id"]: rows[d["dialogue_id"]] for d in dlgs}, record
 
 
 def code_fingerprint() -> dict:
@@ -114,16 +135,31 @@ async def main_async(args):
     budget = int(args.budget or cfg["budget"])
     t0 = time.time()
 
-    # ---- stage 1: per-turn extraction (shared by all extraction-based conditions)
-    extractions = {}
+    # ---- stage 1: per-turn events (shared by all extraction-based conditions)
+    extractions, events_source = {}, dict(kind="extraction", extract_version=args.extract_version)
+    events_from, gold_noise = getattr(args, "events_from", None), getattr(args, "gold_noise", None)
+    assert not (events_from and gold_noise), "use either --events-from or --gold-noise"
     if NEEDS_EXTRACTION & set(conds):
         ex_path = out / "extractions.jsonl"
-        res = await asyncio.gather(*[extract_dialogue(llm, d, version=args.extract_version) for d in dlgs])
+        data = args.data or cfg["data"]
+        if events_from:
+            extractions, events_source = events_from_file(events_from, dlgs, data)
+        elif gold_noise:
+            spec = parse_spec(gold_noise)
+            counts = {}
+            for d in dlgs:
+                extractions[d["dialogue_id"]], counts[d["dialogue_id"]] = noisy_gold_events(d, **spec)
+            events_source = dict(kind="gold_noise", spec=gold_noise, **spec,
+                                 **{k: sum(c[k] for c in counts.values()) for k in ("gold", "dropped", "false")})
+        else:
+            token = CONDITION.set("_extraction")
+            res = await asyncio.gather(*[extract_dialogue(llm, d, version=args.extract_version) for d in dlgs])
+            CONDITION.reset(token)
+            extractions = {d["dialogue_id"]: ev for d, ev in zip(dlgs, res)}
         with ex_path.open("w") as f:
-            for d, ev in zip(dlgs, res):
-                extractions[d["dialogue_id"]] = ev
-                f.write(json.dumps(dict(dialogue_id=d["dialogue_id"], events=ev)) + "\n")
-        print(f"[extract] {len(dlgs)} dialogues in {time.time() - t0:.0f}s", flush=True)
+            for d in dlgs:
+                f.write(json.dumps(dict(dialogue_id=d["dialogue_id"], events=extractions[d["dialogue_id"]])) + "\n")
+        print(f"[events] {len(dlgs)} dialogues from {events_source['kind']} in {time.time() - t0:.0f}s", flush=True)
 
     # ---- stage 2: conditions
     done = 0
@@ -132,6 +168,7 @@ async def main_async(args):
 
     async def task(cond, d):
         nonlocal done
+        CONDITION.set(cond)  # each task runs in its own context, so this labels only this task's calls
         if cond in NEEDS_EXTRACTION:
             ev = extractions[d["dialogue_id"]]
         elif cond == "lifecycle_gold":
@@ -151,14 +188,15 @@ async def main_async(args):
                 f.write(json.dumps(r) + "\n")
     llm.close()
     meta = dict(config=cfg, conditions=conds, budget=budget, hard_cap=args.hard_cap, extract_version=args.extract_version,
-                n_dialogues=len(dlgs),
+                n_dialogues=len(dlgs), events_source=events_source,
                 args=dict(data=args.data or cfg["data"], split=args.split or cfg.get("split"), limit=args.limit,
                           cache=args.cache or cfg.get("cache"), cache_only=args.cache_only,
                           max_concurrency=args.max_concurrency or cfg.get("max_concurrency", 128)),
                 code=code_fingerprint(), model_revision=model_revision(cfg["model"]),
                 server_version=None if args.cache_only else server_version(cfg["base_url"]),
                 wall_seconds=time.time() - t0,
-                gpu=gpu_info(), usage={k: dict(v) for k, v in llm.stats.items()})
+                gpu=gpu_info(), usage={k: dict(v) for k, v in llm.stats.items()},
+                usage_by_condition={c: {k: dict(v) for k, v in tags.items()} for c, tags in llm.by_condition.items()})
     (out / f"meta_B{budget}.json").write_text(json.dumps(meta, indent=1))
     print(f"wrote {probes_path} ({sum(map(len, results))} rows) in {time.time() - t0:.0f}s")
 
@@ -176,6 +214,9 @@ def main():
     ap.add_argument("--hard-cap", action="store_true", help="enforce summary + persistent block <= budget at every probe")
     ap.add_argument("--extract-version", type=int, choices=[1, 2], default=1)
     ap.add_argument("--max-concurrency", type=int, help="override the config's number of concurrent requests")
+    ap.add_argument("--events-from", help="extractions.jsonl of another run, used instead of extracting events")
+    ap.add_argument("--gold-noise", help="precision=P,recall=R[,seed=S]: gold events with controlled errors instead of "
+                                         "extracted events")
     ap.add_argument("--cache-only", action="store_true",
                     help="replay from the cache without calling the server; misses are counted in meta usage")
     asyncio.run(main_async(ap.parse_args()))

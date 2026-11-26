@@ -276,3 +276,135 @@ def test_tagged_runs_replace_only_finished_originals(tmp_path):
                        "qwen2.5-7b-pace-hardcap": "qwen2.5-7b-det1-pace-hardcap",
                        "qwen2.5-7b-pace-fresh-late": "qwen2.5-7b-pace-fresh-late"}
     assert (tmp_path / "det" / "qwen2.5-7b-pace-hardcap" / "probes_B384.jsonl").exists()
+
+
+def _confirm():
+    with open("data/confirm/dialogues.jsonl") as f:
+        return [json.loads(line) for line in f]
+
+
+def _strip_ids(events):
+    return [sorted(json.dumps({k: v for k, v in e.items() if k != "item"}, sort_keys=True) for e in evs) for evs in events]
+
+
+def test_noise_is_deterministic_across_processes_and_on_target():
+    import hashlib
+    import os
+    import subprocess
+    import sys
+    from src.eval.extraction_eval import evaluate
+    from src.extraction.noise import noisy_gold_events
+    ds = _confirm()
+    code = ("import json,hashlib\nfrom src.extraction.noise import noisy_gold_events\n"
+            "ds=[json.loads(l) for l in open('data/confirm/dialogues.jsonl')]\n"
+            "print(hashlib.sha256(json.dumps([noisy_gold_events(d,0.5,0.7,0)[0] for d in ds]).encode()).hexdigest())")
+    here = hashlib.sha256(json.dumps([noisy_gold_events(d, 0.5, 0.7, 0)[0] for d in ds]).encode()).hexdigest()
+    for hash_seed in ("1", "2"):
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True,
+                             env={**os.environ, "PYTHONHASHSEED": hash_seed}).stdout.strip()
+        assert out == here
+    by_id = {d["dialogue_id"]: d for d in ds}
+    for p, r in ((0.5, 1.0), (1.0, 0.7), (0.519, 0.814)):
+        q = evaluate(by_id, [dict(dialogue_id=d["dialogue_id"], events=noisy_gold_events(d, p, r, 0)[0]) for d in ds])
+        assert abs(q["precision"] - p) < 0.01 and abs(q["recall"] - r) < 0.02, (p, r, q["precision"], q["recall"])
+    assert noisy_gold_events(ds[0], 0.5, 1.0, 0) != noisy_gold_events(ds[0], 0.5, 1.0, 1)
+
+
+def test_noise_levels_are_nested():
+    from collections import Counter
+    from src.extraction.noise import noisy_gold_events
+    for d in _confirm()[:40]:
+        for looser, stricter in ((0.6, 0.7), (0.4, 0.5)):
+            a = _strip_ids(noisy_gold_events(d, looser, 1.0, 0)[0])
+            b = _strip_ids(noisy_gold_events(d, stricter, 1.0, 0)[0])
+            assert all(not (Counter(y) - Counter(x)) for x, y in zip(a, b))  # every event at 0.7 is also at 0.6
+        a = _strip_ids(noisy_gold_events(d, 1.0, 0.7, 0)[0])
+        b = _strip_ids(noisy_gold_events(d, 1.0, 0.8, 0)[0])
+        assert all(not (Counter(x) - Counter(y)) for x, y in zip(a, b))  # events kept at 0.7 are kept at 0.8
+
+
+def test_perfect_events_give_gold_ledger_states():
+    from src.extraction.extractor import gold_events
+    from src.extraction.noise import noisy_gold_events
+
+    def states(events):
+        r, out = Reducer(), []
+        for t, evs in enumerate(events):
+            r.apply_all(evs, t)
+            out.append(sorted((i["type"], i["tool"], i["target"], i["status"], i["unclear"], i["failed_attempts"])
+                              for i in r.snapshot().values()))
+        return out
+
+    for d in _confirm()[:40]:
+        perfect, counts = noisy_gold_events(d)
+        assert counts == dict(gold=sum(len(t["gold_events"]) for t in d["turns"]), dropped=0, false=0)
+        assert all(e["item"].startswith("I") and e["tool"] for evs in perfect for e in evs)
+        assert states(perfect) == states(gold_events(d))
+
+
+def test_events_from_file_must_cover_every_dialogue_and_turn(tmp_path):
+    pytest = __import__("pytest")
+    pytest.importorskip("openai")
+    from src.eval.run import events_from_file
+    ds = _confirm()[:2]
+    src = tmp_path / "run" / "extractions.jsonl"
+    src.parent.mkdir()
+    src.write_text("".join(json.dumps(dict(dialogue_id=d["dialogue_id"], events=[[] for _ in d["turns"]])) + "\n"
+                           for d in ds))
+    (tmp_path / "run" / "meta_B384.json").write_text(json.dumps(dict(args=dict(data="data/confirm/dialogues.jsonl"),
+                                                                     config=dict(model="m"), extract_version=2)))
+    events, record = events_from_file(str(src), ds, "data/confirm/dialogues.jsonl")
+    assert set(events) == {d["dialogue_id"] for d in ds} and record["extract_version"] == 2 and len(record["sha256"]) == 64
+    with pytest.raises(AssertionError):
+        events_from_file(str(src), ds, "data/dialogues/dialogues.jsonl")
+    src.write_text(json.dumps(dict(dialogue_id=ds[0]["dialogue_id"], events=[[]])) + "\n")
+    with pytest.raises(AssertionError):
+        events_from_file(str(src), ds[:1], "data/confirm/dialogues.jsonl")
+
+
+def test_usage_is_counted_per_condition(tmp_path):
+    import asyncio
+    __import__("pytest").importorskip("openai")
+    from src.llm.client import CONDITION, LLM
+    llm = LLM("m", "http://127.0.0.1:9/v1", str(tmp_path / "c.sqlite"))
+
+    async def fake_request(*args):
+        await asyncio.sleep(0.01)
+        return dict(text="x", prompt_tokens=5, completion_tokens=1, latency=0.0)
+
+    llm._request = fake_request
+
+    async def one(cond):
+        CONDITION.set(cond)
+        await llm.chat([{"role": "user", "content": "same"}], tag="policy")
+
+    async def both():
+        await asyncio.gather(one("summary"), one("lifecycle"))
+
+    asyncio.run(both())
+    assert {c: dict(v["policy"]) for c, v in llm.by_condition.items()} == {
+        c: dict(prompt_tokens=5.0, completion_tokens=1.0, latency=0.0, calls=1.0) for c in ("summary", "lifecycle")}
+    llm.close()
+
+
+def test_determinism_check_can_compare_shared_conditions(tmp_path):
+    from src.eval.determinism_check import compare
+    rows = [dict(condition=c, probe_id="p1", pred_decision="wait") for c in ("lifecycle", "summary")]
+    (tmp_path / "big").mkdir()
+    (tmp_path / "small").mkdir()
+    (tmp_path / "big" / "probes_B384.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    (tmp_path / "small" / "probes_B384.jsonl").write_text(json.dumps(rows[0]) + "\n")
+    assert not compare(tmp_path / "big", tmp_path / "small")["identical"]
+    assert compare(tmp_path / "big", tmp_path / "small", shared_conditions=True)["identical"]
+
+
+def test_dialogue_metrics_success_safety_and_first_error():
+    import pandas as pd
+    from src.eval.dialogue_report import dialogues
+    rows = [("d1", 1, "act", "act"), ("d1", 2, "wait", "decline"), ("d1", 3, "act", "decline"),
+            ("d2", 1, "decline", "decline"), ("d2", 2, "act", "act")]
+    df = pd.DataFrame([dict(condition="lifecycle", dialogue_id=d, timeline_id="T0", after_turn=t, probe_id=f"{d}_p{t}",
+                            pred_decision=p, gold_decision=g) for d, t, p, g in rows])
+    out = dialogues(df).set_index("dialogue_id")
+    assert out.loc["d1", ["success", "safe", "first_error", "n_probes"]].tolist() == [False, False, 2, 3]
+    assert out.loc["d2", "success"] and out.loc["d2", "safe"] and pd.isna(out.loc["d2", "first_error"])

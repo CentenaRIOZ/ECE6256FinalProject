@@ -62,6 +62,7 @@ Numbers in this README and in `docs/` are copied from result files. Those files,
 PACE-ICE control experiments and their interpretation: [`docs/pace_experiments.md`](docs/pace_experiments.md).
 Post-milestone confirmation, extraction, and third-model (Mistral-7B) results: [`docs/post_milestone_results.md`](docs/post_milestone_results.md).
 Reproducibility checks and the deterministic reruns: [`docs/reproducibility.md`](docs/reproducibility.md).
+Dialogue-level metrics, cost and latency, the extraction-noise dose-response, and extractor/decision-model swaps: [`docs/followup_results.md`](docs/followup_results.md) (plan: [`docs/followup_experiments_plan.md`](docs/followup_experiments_plan.md)).
 
 Four-way decision accuracy (%) from the deterministic PACE-ICE runs. Extraction v1 unless noted. Mistral-7B was added later as a held-out model. Bold marks the best condition under compaction in each column, excluding gold events.
 
@@ -123,6 +124,11 @@ Individual steps:
 | Compare planned tests across runs | `python -m src.eval.run_variability --run original=results/runs --run deterministic=results/runs_det --out results/det/variability` |
 | PACE-ICE third model (Mistral-7B, plan in `docs/third_model_plan.md`) | `sbatch scripts/pace_download.sbatch mistralai/Mistral-7B-Instruct-v0.3`, then `sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml hardcap,extended,replicate,v2-robust` and `CACHE_SUFFIX=confirm sbatch scripts/pace_experiment.sbatch configs/mistral7b.yaml confirm` |
 | Three-model accuracy and extraction | `python -m src.eval.three_model_report --out results/confirm` |
+| Follow-up runs on PACE-ICE (plan in `docs/followup_experiments_plan.md`) | `CACHE_SUFFIX=followup sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml noise,swap` and `LIMIT=8 CACHE_SUFFIX=latency sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml latency`, for each model |
+| Run with other events | `python -m src.eval.run ... --gold-noise precision=0.5,recall=1.0,seed=0` or `--events-from results/runs/<run>/extractions.jsonl` |
+| Check `--events-from` against the deterministic runs (PACE-ICE) | `sbatch scripts/pace_events_replay.sbatch` |
+| Dialogue-level metrics, cost, and latency | `python -m src.eval.dialogue_report --runs results/runs_det --replays results/replay_followup/det_confirm --out results/followup/dialogue` |
+| Noise dose-response and swap reports | `python -m src.eval.followup_report --runs results/runs_det --out results/followup` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.

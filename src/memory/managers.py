@@ -33,6 +33,9 @@ REDUCER_CONDS = {"lifecycle": ReducerConfig(), "lifecycle_gold": ReducerConfig()
 LEDGER_CONDS = set(REDUCER_CONDS) | {"typed_llm"}
 PIN_CONDS = {"pinning", "pinning_hint"}
 CHRONO_CONDS = {"chrono", "chrono_hint"}
+# Conditions that read per-turn events (extracted, from a file, or noisy gold); lifecycle_gold reads clean gold events.
+NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict",
+                    "lifecycle_nohint", "chrono_hint"}
 
 SUMMARY_SYSTEM = ("You compress a conversation between a user and their workplace assistant so the assistant can continue "
                   "working without the original messages. Write a concise, task-focused summary: keep the user's "

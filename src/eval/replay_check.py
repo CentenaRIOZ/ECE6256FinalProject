@@ -80,9 +80,12 @@ def spec(run_dir: Path, budget: int) -> dict:
         data = "data/dialogues/dialogues.jsonl"
     data = meta.get("args", {}).get("data", data)
     split = "dev" if "-dev-" in name else None
+    source = meta.get("events_source") or {}
     return dict(model=model, name=name, budget=budget, data=data, split=split, conditions=meta["conditions"],
                 hard_cap=meta.get("hard_cap", False), extract_version=meta.get("extract_version", 1),
-                n_dialogues=meta["n_dialogues"])
+                n_dialogues=meta["n_dialogues"], limit=meta.get("args", {}).get("limit"),
+                events_from=source.get("path") if source.get("kind") == "file" else None,
+                gold_noise=source.get("spec") if source.get("kind") == "gold_noise" else None, events_source=source)
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -106,7 +109,11 @@ def compare(original: Path, replay: Path, budget: int) -> dict:
         ea = {r["dialogue_id"]: r["events"] for r in read_jsonl(original / "extractions.jsonl")}
         eb = {r["dialogue_id"]: r["events"] for r in read_jsonl(replay / "extractions.jsonl")}
         out["extraction_dialogues_differing"] = sum(ea.get(k) != eb.get(k) for k in set(ea) | set(eb))
-    usage = json.loads((replay / f"meta_B{budget}.json").read_text())["usage"]
+    meta_a = json.loads((original / f"meta_B{budget}.json").read_text())
+    meta_b = json.loads((replay / f"meta_B{budget}.json").read_text())
+    if "events_source" in meta_a:
+        out["events_source_same"] = meta_a["events_source"] == meta_b.get("events_source")
+    usage = meta_b["usage"]
     out["cache_misses"] = int(sum(v.get("cache_miss", 0) for v in usage.values()))
     out["llm_calls"] = int(sum(v.get("calls", 0) for v in usage.values()))
     return out
@@ -137,7 +144,8 @@ def main():
                 replay_name = f"{s['name']}"
                 target = out / replay_name
                 args = Namespace(config=CONFIGS[s["model"]], conditions=",".join(s["conditions"]), split=s["split"],
-                                 limit=None, data=s["data"], budget=budget,
+                                 limit=s["limit"], data=s["data"], budget=budget,
+                                 events_from=s["events_from"], gold_noise=s["gold_noise"],
                                  run_name=os.path.relpath(target, Path("results/runs")),
                                  cache=str(copied([Path(c) for c in a.cache_file], work) if a.cache_file
                                            else merged_cache(s["model"], Path(a.cache_dir), work)),
