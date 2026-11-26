@@ -44,7 +44,7 @@ async def run_one(cond: str, dlg: dict, llm, tc, budget: int, events, hard_cap: 
         if t in comp:
             await mem.compact(t)
         for p in by_t.get(t, []):
-            ctx = mem.context(t)
+            ctx = mem.context(t, query=p["text"])
             item = dlg["items"][p["item"]]
             d, s = await asyncio.gather(decide(llm, ctx, p), state_query(llm, ctx, item["vp"]))
             led_label, led_item = mem.ledger_label_for(item)

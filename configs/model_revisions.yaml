@@ -3,3 +3,6 @@
 Qwen/Qwen2.5-7B-Instruct: a09a35458c702b33eeacc393d103063234e8bc28
 meta-llama/Llama-3.1-8B-Instruct: 0e9e39f249a16976918f6564b8830bc894c89659
 mistralai/Mistral-7B-Instruct-v0.3: c170c708c41dac9275d15a8fff4eca08d52bab71
+Qwen/Qwen2.5-14B-Instruct: cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8
+Qwen/Qwen2.5-32B-Instruct: 5ede1c97bbab6ce5cda5812749b4c0bdf79b18dd
+mistralai/Mistral-Small-24B-Instruct-2501: 8f4e4ef338fcc155464a42e15580e27a3bc91dd9

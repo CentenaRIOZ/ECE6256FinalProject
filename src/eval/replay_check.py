@@ -22,7 +22,9 @@ import pandas as pd
 
 from src.eval.run import main_async
 
-CONFIGS = {"qwen2.5-7b": "configs/qwen7b.yaml", "llama3.1-8b": "configs/llama8b.yaml", "mistral-7b-v0.3": "configs/mistral7b.yaml"}
+CONFIGS = {"qwen2.5-7b": "configs/qwen7b.yaml", "llama3.1-8b": "configs/llama8b.yaml", "mistral-7b-v0.3": "configs/mistral7b.yaml",
+           "qwen2.5-14b": "configs/qwen14b.yaml", "qwen2.5-32b": "configs/qwen32b.yaml",
+           "mistral-small-24b": "configs/mistral24b.yaml"}
 # Earlier files win when two caches hold the same prompt, so a run's own cache comes before smoke caches.
 CACHES = {"qwen2.5-7b": ["llm_qwen7b.sqlite"], "llama3.1-8b": ["llm_llama8b.sqlite"],
           "mistral-7b-v0.3": ["llm_mistral7b.sqlite", "llm_mistral7b_confirm.sqlite", "llm_mistral7b_smoke.sqlite"]}

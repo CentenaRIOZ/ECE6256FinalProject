@@ -21,13 +21,16 @@ COND_NAME = {"lifecycle_nohint": "Ours - action hints", "summary_hint": "Ordinar
 "full": "Full history (no compaction)", "summary": "Ordinary compaction", "pinning": "Constraint pinning",
              "chrono": "Chronological event ledger", "typed_llm": "Typed ledger, LLM transitions",
              "lifecycle": "Lifecycle ledger (ours)", "lifecycle_gold": "Lifecycle ledger, gold events",
-             "abl_noguard": "Ours - guard logic", "abl_noreceipt": "Ours - receipt evidence", "lifecycle_strict": "Ours, strict hedging (post-hoc)"}
+             "abl_noguard": "Ours - guard logic", "abl_noreceipt": "Ours - receipt evidence", "lifecycle_strict": "Ours, strict hedging (post-hoc)",
+             "lifecycle_source": "Ours + speaker check", "recent": "Recent turns, verbatim", "retrieval": "BM25 retrieval",
+             "summary_retrieval": "Compaction + retrieval"}
 MAIN = ["summary", "pinning", "chrono", "typed_llm", "lifecycle"]
 COLORS = {"summary": "#2a78d6", "pinning": "#eb6834", "chrono": "#1baf7a", "typed_llm": "#eda100",
           "lifecycle": "#e87ba4", "lifecycle_gold": "#008300", "full": "#898781",
           "abl_noguard": "#6250d6", "abl_noreceipt": "#e34948", "lifecycle_strict": "#6250d6",
           "lifecycle_nohint": "#b5507a", "summary_hint": "#2a78d6", "pinning_hint": "#eb6834",
-          "chrono_hint": "#1baf7a"}
+          "chrono_hint": "#1baf7a", "lifecycle_source": "#c2185b", "recent": "#7a7a74", "retrieval": "#0e7c86",
+          "summary_retrieval": "#5b8fd6"}
 MARKERS = {"summary": "o", "pinning": "s", "chrono": "^", "typed_llm": "D", "lifecycle": "*", "full": "x",
            "lifecycle_gold": "P"}
 

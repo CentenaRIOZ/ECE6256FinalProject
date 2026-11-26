@@ -1,0 +1,12 @@
+run_name: mistral-small-24b
+model: mistralai/Mistral-Small-24B-Instruct-2501
+base_url: http://localhost:8000/v1
+data: data/dialogues/dialogues.jsonl
+split: test
+budget: 384            # matched memory budget (tokens) for summary + persistent block
+out_dir: results/runs
+cache: cache/llm_mistral24b.sqlite
+max_concurrency: 384
+conditions: [full, summary, pinning, chrono, typed_llm, lifecycle, lifecycle_gold, abl_noguard, abl_noreceipt]
+# Use the Hugging Face chat template, as for the other models, instead of mistral_common.
+vllm_args: --tokenizer-mode hf

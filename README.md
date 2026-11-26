@@ -63,6 +63,7 @@ PACE-ICE control experiments and their interpretation: [`docs/pace_experiments.m
 Post-milestone confirmation, extraction, and third-model (Mistral-7B) results: [`docs/post_milestone_results.md`](docs/post_milestone_results.md).
 Reproducibility checks and the deterministic reruns: [`docs/reproducibility.md`](docs/reproducibility.md).
 Dialogue-level metrics, cost and latency, the extraction-noise dose-response, and extractor/decision-model swaps: [`docs/followup_results.md`](docs/followup_results.md) (plan: [`docs/followup_experiments_plan.md`](docs/followup_experiments_plan.md)).
+Larger models (Qwen2.5-14B/32B, Mistral-Small-24B), retrieval baselines, and forged updates: [`docs/scale_retrieval_forgery_results.md`](docs/scale_retrieval_forgery_results.md) (plan: [`docs/scale_retrieval_forgery_plan.md`](docs/scale_retrieval_forgery_plan.md)).
 
 Four-way decision accuracy (%) from the deterministic PACE-ICE runs. Extraction v1 unless noted. Mistral-7B was added later as a held-out model. Bold marks the best condition under compaction in each column, excluding gold events.
 
@@ -129,6 +130,10 @@ Individual steps:
 | Check `--events-from` against the deterministic runs (PACE-ICE) | `sbatch scripts/pace_events_replay.sbatch` |
 | Dialogue-level metrics, cost, and latency | `python -m src.eval.dialogue_report --runs results/runs_det --replays results/replay_followup/det_confirm --out results/followup/dialogue` |
 | Noise dose-response and swap reports | `python -m src.eval.followup_report --runs results/runs_det --out results/followup` |
+| Forged-update data | `python -m src.generation.forged --data data/confirm/dialogues.jsonl --out data/forged/dialogues.jsonl --seed 20261127` |
+| Retrieval baselines, speaker check, and forged set, 7B models (PACE-ICE) | `CACHE_SUFFIX=scale sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml newconds`, for each 7B model |
+| Larger models (PACE-ICE; weights fetched to node-local disk per job) | `TOKENIZER_ONLY=1 sbatch scripts/pace_download.sbatch Qwen/Qwen2.5-32B-Instruct`, then `LOCAL_WEIGHTS=1 CACHE_SUFFIX=scale sbatch -t 03:00:00 scripts/pace_experiment.sbatch configs/qwen32b.yaml scale`; also `qwen14b`, `mistral24b` |
+| Scale, retrieval, forged-update, and decay/caution/ledger reports | `python -m src.eval.scale_report --runs results/runs_det --out results/scale` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.

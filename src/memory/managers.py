@@ -14,6 +14,10 @@ lifecycle_nohint  lifecycle state rendered without action directives such as "do
 summary_hint    ordinary compaction whose summary records status and permitted action
 pinning_hint    pinning whose rules record status and permitted action
 chrono_hint     chronological log whose events carry their own action implication, without a reducer
+lifecycle_source  lifecycle in which events from non-user turns can only be tool results (only the user changes instructions)
+recent          no summary: memory keeps the most recent earlier turns verbatim, up to B tokens
+retrieval       no summary: memory holds earlier turns retrieved by BM25 for the decision request, up to B tokens
+summary_retrieval  summary written to 0.4 B tokens plus retrieved earlier turns up to 0.6 B tokens
 
 With hard_cap=True, the summary is shortened whenever summary + persistent block would exceed B tokens.
 """
@@ -23,19 +27,24 @@ import json
 
 from src.extraction.extractor import fmt_turn
 from src.ledger.reducer import Reducer, ReducerConfig, render_item, status_label
+from src.memory.retrieval import most_recent, retrieve
 
 CONDITIONS = ["full", "summary", "pinning", "chrono", "typed_llm", "lifecycle", "lifecycle_gold",
               "abl_noguard", "abl_noreceipt", "lifecycle_strict", "lifecycle_nohint", "summary_hint", "pinning_hint",
-              "chrono_hint"]
+              "chrono_hint", "lifecycle_source", "recent", "retrieval", "summary_retrieval"]
 REDUCER_CONDS = {"lifecycle": ReducerConfig(), "lifecycle_gold": ReducerConfig(),
                  "abl_noguard": ReducerConfig(guard_logic=False), "abl_noreceipt": ReducerConfig(receipt_logic=False),
-                 "lifecycle_strict": ReducerConfig(hedge_from_flags=False), "lifecycle_nohint": ReducerConfig()}
+                 "lifecycle_strict": ReducerConfig(hedge_from_flags=False), "lifecycle_nohint": ReducerConfig(),
+                 "lifecycle_source": ReducerConfig()}
+SOURCE_CHECK = {"lifecycle_source"}
+RETRIEVAL_CONDS = {"retrieval", "summary_retrieval"}
+NO_SUMMARY = {"recent", "retrieval"}
 LEDGER_CONDS = set(REDUCER_CONDS) | {"typed_llm"}
 PIN_CONDS = {"pinning", "pinning_hint"}
 CHRONO_CONDS = {"chrono", "chrono_hint"}
 # Conditions that read per-turn events (extracted, from a file, or noisy gold); lifecycle_gold reads clean gold events.
 NEEDS_EXTRACTION = {"chrono", "typed_llm", "lifecycle", "abl_noguard", "abl_noreceipt", "lifecycle_strict",
-                    "lifecycle_nohint", "chrono_hint"}
+                    "lifecycle_nohint", "chrono_hint", "lifecycle_source"}
 
 SUMMARY_SYSTEM = ("You compress a conversation between a user and their workplace assistant so the assistant can continue "
                   "working without the original messages. Write a concise, task-focused summary: keep the user's "
@@ -139,6 +148,8 @@ class Memory:
     async def observe(self, t: int):
         turn = self.turns[t]
         evs = self.events[t] if self.events is not None else []
+        if self.cond in SOURCE_CHECK and turn["role"] != "user":
+            evs = [e for e in evs if e["op"] == "tool_result"]
         if self.cond in PIN_CONDS and turn["role"] in ("user", "tool"):
             words = int(self.ledger_cap * 0.7)
             system = PIN_HINT_SYSTEM if self.cond == "pinning_hint" else PIN_SYSTEM
@@ -192,8 +203,19 @@ class Memory:
             return {k: dict(v) for k, v in self.typed.items()}
         return None
 
-    def block(self) -> tuple[str, bool]:
-        """Persistent block kept alongside the summary; returns (text, truncated?)."""
+    def block(self, query: str | None = None) -> tuple[str, bool]:
+        """Persistent block kept alongside the summary; returns (text, truncated?). Retrieval uses the query."""
+        earlier = self.turns[:self.last_compact + 1]
+        if self.cond == "recent":
+            return most_recent(earlier, fmt_turn, self.B, "EARLIER CONVERSATION (most recent earlier turns, verbatim):",
+                               self.tc.count), False
+        if self.cond in RETRIEVAL_CONDS:
+            if not query or not earlier:
+                return "", False
+            cap = self.B if self.cond == "retrieval" else self.ledger_cap
+            return retrieve(query, earlier, fmt_turn, cap,
+                            "RETRIEVED EARLIER TURNS (most relevant to the current request, in original order):",
+                            self.tc.count), False
         if self.cond in PIN_CONDS:
             return (f"PINNED RULES:\n{self.pinned}" if self.pinned else ""), False
         if self.cond in CHRONO_CONDS:
@@ -216,7 +238,7 @@ class Memory:
 
     def _compose(self, summary: str, blk: str) -> str:
         parts = []
-        if self.last_compact >= 0:
+        if self.last_compact >= 0 and self.cond not in NO_SUMMARY:
             parts.append(f"SUMMARY OF EARLIER CONVERSATION (turns 0-{self.last_compact}):\n{summary}")
         if blk:
             parts.append(blk)
@@ -236,9 +258,15 @@ class Memory:
     async def compact(self, t: int):
         if self.cond == "full":
             return
+        if self.cond in NO_SUMMARY:  # earlier turns stay available verbatim; nothing is written
+            self.last_compact = t
+            return
         blk, _ = self.block()
         previous = self._fit_summary(blk)  # under the hard cap, compaction only sees memory the agent actually kept
-        sum_budget = max(int(0.4 * self.B), self.B - self.tc.count(blk))
+        if self.cond == "summary_retrieval":  # the retrieved block may fill its full cap at any decision
+            sum_budget = self.B - self.ledger_cap
+        else:
+            sum_budget = max(int(0.4 * self.B), self.B - self.tc.count(blk))
         new = "\n".join(fmt_turn(x) for x in self.turns[self.last_compact + 1:t + 1])
         system = SUMMARY_HINT_SYSTEM if self.cond == "summary_hint" else SUMMARY_SYSTEM
         r = await self.llm.chat([
@@ -249,12 +277,12 @@ class Memory:
         self.last_compact = t
 
     # ------------------------------------------------------------ context at a decision point
-    def context(self, t: int) -> dict:
+    def context(self, t: int, query: str | None = None) -> dict:
         if self.cond == "full":
             raw = self.turns[:t + 1]
             return dict(memory="", raw="\n".join(fmt_turn(x) for x in raw), memory_tokens=0, truncated=False,
                         summary_capped=False)
-        blk, trunc = self.block()
+        blk, trunc = self.block(query)
         summary = self._fit_summary(blk)
         mem = self._compose(summary, blk)
         raw = self.turns[self.last_compact + 1:t + 1]

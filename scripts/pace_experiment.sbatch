@@ -20,6 +20,10 @@
 #   swap:     this model decides with the other models' deterministic extractions (v1 and v2)
 #   latency:  one request at a time, each condition from its own empty cache (use with LIMIT=8)
 #   followup-pilot: three noise settings and one swap cell (use with LIMIT=8)
+#   The scale, retrieval, and forged-update modes are described in docs/scale_retrieval_forgery_plan.md:
+#   newconds: 7B models; retrieval baselines and the speaker check on Confirm and Test, and the forged-update set
+#   scale:    larger models; a batch-invariance check on 8 dialogues, Confirm v1 and v2, and the forged-update set
+#   LOCAL_WEIGHTS=1 downloads the pinned model to node-local disk for this job and deletes it at the end.
 #SBATCH -J ladl-exp
 #SBATCH --account=ece --partition=coe-gpu --qos=coe-ice
 #SBATCH -N1 --ntasks-per-node=1 --cpus-per-task=8 --mem=64G
@@ -56,6 +60,9 @@ V2_CONDS=chrono,chrono_hint,typed_llm,lifecycle,lifecycle_nohint,lifecycle_stric
 FU_CONDS=$("$PY" -c "from src.eval.followup_settings import CONDITIONS; print(','.join(CONDITIONS))")
 LATENCY_CONDS=$("$PY" -c "from src.eval.followup_settings import LATENCY_CONDITIONS; print(' '.join(LATENCY_CONDITIONS))")
 CONFIRM=data/confirm/dialogues.jsonl
+FORGED=data/forged/dialogues.jsonl
+NEW_CONDS=recent,retrieval,summary_retrieval,lifecycle_source
+FORGED_CONDS=full,summary,summary_hint,pinning,pinning_hint,chrono,chrono_hint,typed_llm,lifecycle,lifecycle_nohint,$NEW_CONDS
 mapfile -t NOISE_SETTINGS < <("$PY" -m src.eval.followup_settings noise "$BASE_RUN")
 mapfile -t SWAP_CELLS < <("$PY" -m src.eval.followup_settings swap "$BASE_RUN")
 # Deterministic extraction of another model's Confirm run, used by the swap cells.
@@ -94,6 +101,13 @@ case "$1" in
   latency)
     [ -n "${LIMIT:-}" ] || { echo "latency needs LIMIT"; exit 2; }
     for C in $LATENCY_CONDS; do refuse_existing "results/runs/$RUN-pace-latency-$C/probes_B384.jsonl"; done ;;
+  newconds)
+    for R in confirm-new-v1 confirm-new-v2 test-new forged-v2; do refuse_existing "results/runs/$RUN-pace-$R/probes_B384.jsonl"; done
+    for V in v1 v2; do [ -f "$(swap_source "$BASE_RUN" "$V")" ] || { echo "missing $(swap_source "$BASE_RUN" "$V")"; exit 2; }; done
+    [ -f "results/runs/$BASE_RUN-det1-pace-hardcap/extractions.jsonl" ] || { echo "missing Test extraction"; exit 2; } ;;
+  scale)
+    [ -n "${LOCAL_WEIGHTS:-}" ] || { echo "scale needs LOCAL_WEIGHTS=1"; exit 2; }
+    for R in confirm-v1 confirm-v2 forged-v2; do refuse_existing "results/runs/$RUN-pace-$R/probes_B384.jsonl"; done ;;
   followup-pilot)
     [ -n "${LIMIT:-}" ] || { echo "followup-pilot needs LIMIT"; exit 2; }
     [ -n "${RUN_TAG:-}" ] || { echo "followup-pilot needs RUN_TAG"; exit 2; } ;;
@@ -123,6 +137,7 @@ save_cache() {
   if [ -f "$LOCAL_CACHE" ]; then
     copy_sqlite "$LOCAL_CACHE" "$CACHE" && echo "cache saved to $CACHE"
   fi
+  if [ -n "${LOCAL_WEIGHTS:-}" ]; then rm -rf "$LOCAL/hf_home" && echo "local weights removed"; fi
 }
 trap save_cache EXIT
 # Bash runs a trap only after a foreground child exits, so runs go to the background and the shell waits on them.
@@ -131,6 +146,19 @@ trap 'echo "time limit signal"; [ -n "$RUN_PID" ] && kill "$RUN_PID" 2>/dev/null
 
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 echo "VLLM_BATCH_INVARIANT=$VLLM_BATCH_INVARIANT"
+if [ -n "${LOCAL_WEIGHTS:-}" ]; then
+  # Project storage cannot hold the larger models, so this job fetches the pinned revision to node-local disk.
+  export HF_HOME=$LOCAL/hf_home HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0
+  "$PY" - "$MODEL" "$REV" <<'PY'
+import sys, time
+from huggingface_hub import snapshot_download
+t0 = time.time()
+path = snapshot_download(sys.argv[1], revision=sys.argv[2],
+                         ignore_patterns=["original/*", "*.pth", "*.bin", "*.gguf", "consolidated*"])
+print(f"downloaded {sys.argv[1]}@{sys.argv[2]} to {path} in {time.time() - t0:.0f}s", flush=True)
+PY
+  export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+fi
 "$PY" -c "
 import sys
 from src.llm.client import TokenCounter
@@ -233,6 +261,23 @@ case "$MODE" in
         run "$RUN-pace-latency-$C" --hard-cap --data "$CONFIRM" --extract-version 1
       copy_sqlite "$LOCAL/latency_$C.sqlite" "$(dirname "$CACHE")/latency/$(basename "${CACHE%.sqlite}")_latency_$C.sqlite"
     done ;;
+  newconds)
+    CONDS=$NEW_CONDS run "$RUN-pace-confirm-new-v1" --hard-cap --data "$CONFIRM" --events-from "$(swap_source "$BASE_RUN" v1)"
+    CONDS=lifecycle_source run "$RUN-pace-confirm-new-v2" --hard-cap --data "$CONFIRM" --events-from "$(swap_source "$BASE_RUN" v2)"
+    CONDS=$NEW_CONDS run "$RUN-pace-test-new" --hard-cap --events-from "results/runs/$BASE_RUN-det1-pace-hardcap/extractions.jsonl"
+    CONDS=$FORGED_CONDS run "$RUN-pace-forged-v2" --hard-cap --data "$FORGED" --extract-version 2 ;;
+  scale)
+    # Batch invariance for this model: two runs on the same server with different batching must match exactly.
+    for X in a:384 b:64; do
+      CONDS=$ALL_CONDS,$NEW_CONDS RUN_CACHE=$LOCAL/check_${X%%:*}.sqlite MAX_CONCURRENCY=${X##*:} LIMIT=8 \
+        run "$RUN-pace-scalecheck-${X%%:*}" --hard-cap --data "$CONFIRM" --extract-version 1
+      [ -f "$LOCAL/check_${X%%:*}.sqlite" ] && copy_sqlite "$LOCAL/check_${X%%:*}.sqlite" "${CACHE%.sqlite}_check_${X%%:*}.sqlite"
+    done
+    "$PY" -m src.eval.determinism_check "results/runs/$RUN-pace-scalecheck-a" "results/runs/$RUN-pace-scalecheck-b" \
+      || { echo "batch invariance check failed; stopping"; exit 4; }
+    CONDS=$ALL_CONDS,$NEW_CONDS run "$RUN-pace-confirm-v1" --hard-cap --data "$CONFIRM" --extract-version 1
+    CONDS=$V2_CONDS,lifecycle_source run "$RUN-pace-confirm-v2" --hard-cap --data "$CONFIRM" --extract-version 2
+    CONDS=$FORGED_CONDS run "$RUN-pace-forged-v2" --hard-cap --data "$FORGED" --extract-version 2 ;;
   followup-pilot)
     CONDS=$FU_CONDS run "$RUN-pace-confirm-noise-p1000-r1000-s0" --hard-cap --data "$CONFIRM" --gold-noise precision=1.0,recall=1.0,seed=0
     CONDS=$FU_CONDS run "$RUN-pace-confirm-noise-p500-r1000-s0" --hard-cap --data "$CONFIRM" --gold-noise precision=0.5,recall=1.0,seed=0
