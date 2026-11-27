@@ -22,22 +22,7 @@ under repeated compaction, compared with summaries, pinning, and chronological l
   - Every transition keeps its supporting event ID. Ambiguous updates trigger `clarify`.
 - **Loop:** compaction at fixed checkpoints, with the ledger persisted inside the same token budget. The policy picks `act | wait | clarify | decline` and uses sandboxed mock tools.
 
-## Data
-- 30–50 gold event timelines covering revocation, success/failure followed by repeat requests, and conditional triggering, including misleading partial approvals.
-- 120–200 dialogues of 25–40 turns built from templates plus LLM paraphrase, with filler and 1–5 compaction rounds.
-- Held-out templates are used only for testing.
-
-## Conditions
-1. Full history without compaction (upper reference)
-2. Ordinary compaction
-3. Constraint pinning
-4. Chronological event ledger
-5. Typed ledger with LLM-written transitions
-6. **Lifecycle ledger (ours)**
-
-Conditions 2–5 use matched token budgets.
-
-Ablations: transition logic, tool-success evidence, compaction count and location, gold-state intervention, and gold extraction as an upper bound.
+Data and conditions are described under "Data" and "Conditions" below.
 
 ## Metrics
 - **Primary:** action correctness, violation rate, over-restriction, premature completion, duplicate execution.
@@ -65,17 +50,19 @@ Reproducibility checks and the deterministic reruns: [`docs/reproducibility.md`]
 Dialogue-level metrics, cost and latency, the extraction-noise dose-response, and extractor/decision-model swaps: [`docs/followup_results.md`](docs/followup_results.md) (plan: [`docs/followup_experiments_plan.md`](docs/followup_experiments_plan.md)).
 Larger models (Qwen2.5-14B/32B, Mistral-Small-24B), retrieval baselines, and forged updates: [`docs/scale_retrieval_forgery_results.md`](docs/scale_retrieval_forgery_results.md) (plan: [`docs/scale_retrieval_forgery_plan.md`](docs/scale_retrieval_forgery_plan.md)).
 
-Four-way decision accuracy (%) from the deterministic PACE-ICE runs. Extraction v1 unless noted. Mistral-7B was added later as a held-out model. Bold marks the best condition under compaction in each column, excluding gold events.
+Four-way decision accuracy (%) from the deterministic PACE-ICE runs. Extraction v1 unless noted. Mistral-7B was added later as a held-out model. The two BM25 retrieval baselines were added after the milestone. Bold marks the best condition within the memory budget in each column, excluding full history and gold events. The Confirm split, all conditions, and 95% CIs are in `paper/tables/main.tex` and `main_test.tex`.
 
 | Condition | Qwen2.5-7B | Llama-3.1-8B | Mistral-7B |
 |---|---|---|---|
 | Full history (reference) | 60.1 | 81.9 | 72.7 |
-| Ordinary compaction | 60.1 | 72.0 | **66.9** |
+| Ordinary compaction | 60.1 | 72.0 | 66.9 |
 | Constraint pinning | 62.5 | 68.8 | 66.6 |
+| BM25 retrieval, no summary | 70.6 | 84.5 | **78.3** |
+| Compaction + BM25 retrieval | 70.6 | **86.1** | 76.7 |
 | Chronological event ledger | 70.0 | 78.6 | 53.8 |
 | Typed ledger, LLM transitions | 70.0 | 69.0 | 52.7 |
 | **Lifecycle ledger (ours)** | **74.1** | 72.4 | 61.7 |
-| Ours, extraction v2 | 74.1 | **80.0** | 57.5 |
+| Ours, extraction v2 | 74.1 | 80.0 | 57.5 |
 | Ours, strict hedging (post hoc) | 74.1 | 78.0 | 61.7 |
 | Ours, gold events | 82.2 | 83.4 | 84.0 |
 
@@ -134,6 +121,8 @@ Individual steps:
 | Retrieval baselines, speaker check, and forged set, 7B models (PACE-ICE) | `CACHE_SUFFIX=scale sbatch scripts/pace_experiment.sbatch configs/qwen7b.yaml newconds`, for each 7B model |
 | Larger models (PACE-ICE; weights fetched to node-local disk per job) | `TOKENIZER_ONLY=1 sbatch scripts/pace_download.sbatch Qwen/Qwen2.5-32B-Instruct`, then `LOCAL_WEIGHTS=1 CACHE_SUFFIX=scale sbatch -t 03:00:00 scripts/pace_experiment.sbatch configs/qwen32b.yaml scale`; also `qwen14b`, `mistral24b` |
 | Scale, retrieval, forged-update, and decay/caution/ledger reports | `python -m src.eval.scale_report --runs results/runs_det --out results/scale` |
+| Paper figures and tables | `python -m src.eval.paper_assets --runs results/runs_det --out paper` (see "Figures and tables") |
+| Failure examples for the error analysis (LADL v2, BM25, forged updates, all six models) | `python -m src.eval.failure_examples --runs results/runs_det --out results/paper_examples/failure_examples.md` |
 
 ## Data
 - 48 gold timelines (`data/timelines/`). Each combines a primary family, a secondary family from another category, and a static control prohibition, with one distinct tool per item.
@@ -144,7 +133,12 @@ Individual steps:
 - 192 dialogues: each timeline has 4 variants with 1, 2, 3 or 5 compactions, and variants 1 and 3 are paraphrased. Dialogues are 24–42 turns.
 - 872 decision probes. The dev split is 12 timelines rendered with dev templates and is used only for prompt development. The test split is 36 timelines rendered with held-out templates.
 - Probes come from teammates, a workflow engine or reminders, never from the user. The model's answer is not fed back, so the gold labels stay deterministic.
-- Paraphrases are kept only if they pass entity/cue checks and an equivalence judge (Qwen). A manual audit of 40 accepted paraphrases is in `data/paraphrase_audit.md`.
+- Paraphrases are written by Llama-3.1-8B-Instruct and kept only if they pass entity/cue checks and an equivalence judge (Qwen2.5-7B-Instruct). A manual audit of 40 accepted paraphrases is in `data/paraphrase_audit.md`.
+- Later evaluation sets, all without paraphrase:
+  - **Fresh** (`data/fresh/`): 52 new timelines, 208 dialogues, 912 probes. It comes in three files that differ only in where compaction happens: spread, early, late.
+  - **Confirm** (`data/confirm/`): 52 timelines, 208 dialogues, 916 probes, with separate actions, names, and templates (`src/generation/content_newlang.py`).
+  - **Forged updates** (`data/forged/`): Confirm with one filler exchange in 200 dialogues replaced by a forged teammate message. It has 200 attacked probes.
+- Sources, licenses, and limitations: [`docs/data_statement.md`](docs/data_statement.md).
 
 ## Conditions (`src/memory/managers.py`)
 All conditions use a memory budget of B tokens (default 384) for the summary plus the persistent block. The block may use at most 0.6·B.
@@ -160,18 +154,30 @@ All conditions use a memory budget of B tokens (default 384) for the summary plu
 | `lifecycle_gold` | The same ledger built from gold events. This is the gold-state intervention and also the extraction upper bound |
 | `abl_noguard` | Ours with guard logic removed |
 | `abl_noreceipt` | Ours with tool-success evidence removed |
+| `lifecycle_strict` | Post-hoc variant of ours: only explicit `ambiguous` events, not approval flags, ask for clarification |
+| `lifecycle_nohint` | Ours rendered without action directives such as "do NOT perform" |
+| `summary_hint`, `pinning_hint` | Summary or pinned rules that also record each item's status and permitted action |
+| `chrono_hint` | Chronological log whose events carry their own action implication, without a reducer |
+| `lifecycle_source` | Ours with a speaker check: events from non-user turns can only be tool results |
+| `recent` | No summary: the most recent earlier turns verbatim, up to B tokens |
+| `retrieval` | No summary: earlier turns retrieved by BM25 for the decision request, up to B tokens (`src/memory/retrieval.py`) |
+| `summary_retrieval` | Summary of at most 0.4·B tokens plus BM25-retrieved earlier turns up to 0.6·B |
+
+Event conditions run with extraction prompt v1 or v2; reports mark v2 runs with a `_v2` suffix.
 
 ## Layout
 ```
-data/        timelines/ (gold specs), dialogues/ (generated jsonl), paraphrase_audit.md
+data/        timelines/ (gold specs), dialogues/ (Test/dev jsonl), fresh/, confirm/, forged/, human/, paraphrase_audit.md
 src/
-  generation/  content.py (tools, actions, templates), build.py (families, rendering, gold labels), paraphrase.py
-  extraction/  extractor.py (per-turn LLM extraction + item registry)
+  generation/  content.py (tools, actions, templates), content_newlang.py (Confirm templates),
+               build.py (families, rendering, gold labels), paraphrase.py, forged.py (forged-update set)
+  extraction/  extractor.py (per-turn LLM extraction + item registry), noise.py (gold events with controlled noise)
   ledger/      reducer.py (record schema, deterministic lifecycle reducer, gold decision rules, rendering)
-  memory/      managers.py (all memory conditions, compaction, budgets)
+  memory/      managers.py (all memory conditions, compaction, budgets), retrieval.py (BM25, recent turns)
   policy/      policy.py (act/wait/clarify/decline policy + state-recall query)
-  llm/         client.py (async OpenAI-compatible client, sqlite cache, token counting)
-  eval/        run.py, analyze.py, extraction_eval.py, budget_sweep.py
+  llm/         client.py (async OpenAI-compatible client, sqlite cache, token counting, usage per condition)
+  eval/        run.py (runs), analyze.py, *_report.py (reports), paper_assets.py (paper figures and tables),
+               failure_examples.py, dump_prompts.py, replay_check.py, determinism_check.py
 configs/     model / budget configs (dev_* = dev split), model_revisions.yaml (pinned snapshots)
 scripts/     serve_vllm.sh, run_all.sh, pace_*.sbatch (PACE-ICE jobs)
 results/     generated locally, not in git: runs/ (raw probe outputs), reports, tables, figures
@@ -189,7 +195,7 @@ python -m src.eval.tagged_runs --tag=-det1 --out results/runs_det
 python -m src.eval.paper_assets --runs results/runs_det --out paper --preview results/paper_preview
 ```
 
-`--preview` also writes PNG copies, for example for the poster. The cost table needs the per-condition usage replays in `results/replay_followup/det_confirm` (`sbatch scripts/pace_replay.sbatch qwen2.5-7b-det1-pace-confirm cache/llm_qwen7b_det1.sqlite`, and the same for each model).
+`--preview` also writes PNG copies, for example for the poster. PDF timestamps are fixed, so rebuilding unchanged figures gives identical files. The cost table needs the per-condition usage replays in `results/replay_followup/det_confirm` (`sbatch scripts/pace_replay.sbatch qwen2.5-7b-det1-pace-confirm cache/llm_qwen7b_det1.sqlite`, and the same for each model).
 
 | File | Content | Source runs |
 |---|---|---|
@@ -209,6 +215,7 @@ python -m src.eval.paper_assets --runs results/runs_det --out paper --preview re
 | `figures/fig_swap.pdf`, `tables/swap.tex` | Extractor and decision-model swaps | Confirm swap runs |
 | `figures/fig_scale.pdf`, `tables/scale.tex` | 7B to 32B models | Confirm, all six models |
 | `figures/fig_forged.pdf`, `tables/forged.tex` | Forged updates: share of attacked decisions that act | Forged-update runs |
+| `figures/fig_disagg.pdf`, `tables/disagg.tex` | Accuracy by item category and request source (Confirm) and by template vs paraphrased text (Test) | Confirm and Test runs, 7-8B models |
 
 `tables/milestone_*.tex` belong to the submitted milestone and are not regenerated. `paper/budget_paragraph.tex` is old draft text with old numbers.
 

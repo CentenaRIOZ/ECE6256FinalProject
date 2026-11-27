@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -456,6 +457,89 @@ def table_swap(swap: pd.DataFrame) -> str:
     return tabular(["Decision model"] + [f"{e} {v}" for e in SMALL for v in ("v1", "v2")], rows)
 
 
+# Disaggregated accuracy: item category and request source on Confirm, template vs paraphrased text on Test (Confirm has
+# no paraphrases). Each cell resamples the timelines that have probes in the group.
+DIS_CONDS = ["summary", "retrieval", "lifecycle_v2", "lifecycle_gold"]
+DIS_GROUPS = [("Confirm", "category", "Item category", ["revocation", "completion", "conditional", "static"]),
+              ("Confirm", "kind", "Request source", ["teammate", "workflow", "reminder"]),
+              ("Test", "paraphrased", "Test text", [False, True])]
+DIS_VALUE = {"revocation": "Revocation", "completion": "Completion", "conditional": "Conditional",
+             "static": "Static rule", "teammate": "Teammate", "workflow": "Workflow engine", "reminder": "Reminder",
+             False: "Template", True: "Paraphrased"}
+
+
+def disagg_rows(confirm: dict[str, pd.DataFrame], test: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    rows = []
+    for dataset, frames in (("Confirm", confirm), ("Test", test)):
+        for m, f in frames.items():
+            for ds, column, group, values in DIS_GROUPS:
+                if ds != dataset:
+                    continue
+                for value in values:
+                    g = f[f[column] == value]
+                    for c in DIS_CONDS:
+                        d = g[g.condition == c]
+                        if len(d):
+                            v, lo, hi = cluster_boot(d, "accuracy")
+                            rows.append(dict(model=m, dataset=dataset, group=group, value=value, condition=c,
+                                             n=d.probe_id.nunique(), accuracy=v, lo=lo, hi=hi))
+    return pd.DataFrame(rows)
+
+
+def table_disagg(dis: pd.DataFrame) -> str:
+    conds = ["summary", "retrieval", "lifecycle_v2"]
+    short = {"summary": "Comp.", "retrieval": "BM25", "lifecycle_v2": "LADL"}
+    k = len(conds)
+    out = [f"\\begin{{tabular}}{{llr{'r' * k * len(SMALL)}}}", "\\toprule",
+           " & & & " + " & ".join(f"\\multicolumn{{{k}}}{{c}}{{{SIZE_NAME[m]}}}" for m in SMALL) + " \\\\",
+           " ".join(f"\\cmidrule(lr){{{4 + i * k}-{3 + (i + 1) * k}}}" for i in range(len(SMALL))),
+           "Group & Value & Probes & " + " & ".join(short[c] for _ in SMALL for c in conds) + " \\\\", "\\midrule"]
+    for j, (dataset, _, group, values) in enumerate(DIS_GROUPS):
+        if j:
+            out.append("\\midrule")
+        for i, value in enumerate(values):
+            s = dis[(dis.dataset == dataset) & (dis.group == group) & (dis.value == value)]
+            n = int(s[s.condition == "summary"].n.iloc[0])
+            cells = []
+            for m in SMALL:
+                t = s[s.model == m].set_index("condition")
+                cells += [pc(t.loc[c, "accuracy"]) if c in t.index else "--" for c in conds]
+            label = f"{group} ({dataset})" if i == 0 else ""
+            out.append(" & ".join([label, DIS_VALUE[value], str(n)] + cells) + " \\\\")
+    return "\n".join(out + ["\\bottomrule", "\\end{tabular}", ""])
+
+
+def fig_disagg(dis: pd.DataFrame, out: Path):
+    plt = setup_mpl()
+    labels = [(ds, g, v) for ds, _, g, values in DIS_GROUPS for v in values]
+    fig, axes = plt.subplots(1, len(SMALL), figsize=(7.2, 3.3), sharey=True)
+    offsets = np.linspace(-0.27, 0.27, len(DIS_CONDS))
+    for ax, m in zip(axes, SMALL):
+        s = dis[dis.model == m]
+        for off, c in zip(offsets, DIS_CONDS):
+            for i, (ds, g, v) in enumerate(labels):
+                r = s[(s.dataset == ds) & (s.group == g) & (s.value == v) & (s.condition == c)]
+                if not len(r):
+                    continue
+                acc, lo, hi = r[["accuracy", "lo", "hi"]].iloc[0]
+                ax.errorbar(acc, i + off, xerr=[[acc - lo], [hi - acc]], fmt="o", ms=3, color=color(c), lw=0.8,
+                            capsize=1.2, mfc="white" if c == "lifecycle_gold" else color(c),
+                            label=NAME[c] if i == 0 else None)
+        for b in np.cumsum([len(vals) for *_, vals in DIS_GROUPS])[:-1]:
+            ax.axhline(b - 0.5, color="#d6d6d3", lw=0.7)
+        ax.set_yticks(range(len(labels)), [f"{DIS_VALUE[v]} ({ds})" for ds, _, v in labels], fontsize=7.5)
+        ax.set_xlim(0.2, 1.0)
+        ax.set_title(SIZE_NAME[m], fontsize=9, color="#0b0b0b")
+        ax.set_xlabel("Action accuracy (95% CI)", fontsize=8)
+        ax.grid(axis="y", visible=False)
+    axes[0].invert_yaxis()
+    handles, names = axes[0].get_legend_handles_labels()
+    fig.legend(handles, names, loc="upper center", ncol=len(DIS_CONDS), fontsize=7.5, frameon=False)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    save(fig, out / "fig_disagg.pdf")
+    plt.close(fig)
+
+
 def error_rows(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
     fns = metric_fns()
     rows = []
@@ -478,6 +562,8 @@ def main():
     ap.add_argument("--replays", default="results/replay_followup/det_confirm",
                     help="cache replays of the deterministic Confirm runs, which count usage per condition")
     a = ap.parse_args()
+    # Fixed PDF timestamps (matplotlib reads SOURCE_DATE_EPOCH), so unchanged figures stay byte-identical when rebuilt.
+    os.environ.setdefault("SOURCE_DATE_EPOCH", "0")
     root, out = Path(a.runs), Path(a.out)
     figs, tabs = out / "figures", out / "tables"
     global PREVIEW
@@ -520,12 +606,14 @@ def main():
     fig_budget(bud, figs)
     fig_forged(effects, figs)
     fig_swap(swap, figs)
+    dis = disagg_rows(small, test)
+    fig_disagg(dis, figs)
 
     tables = {"main": table_accuracy(acc_c, MAIN, SMALL), "main_test": table_accuracy(acc_t, MAIN, SMALL),
               "paired": table_tests(tests), "errors": table_errors(err), "ablations": table_ablations(small),
               "extraction": table_extraction(root), "rq1": table_rq1(rq1), "rq3": table_rq3(small, root),
               "dialogue": table_dialogue(small), "scale": table_scale(scale_acc), "forged": table_forged(effects),
-              "swap": table_swap(swap), "cost": table_cost(root, Path(a.replays))}
+              "swap": table_swap(swap), "cost": table_cost(root, Path(a.replays)), "disagg": table_disagg(dis)}
     for name, text in tables.items():
         (tabs / f"{name}.tex").write_text(f"% Generated by python -m src.eval.paper_assets; do not edit.\n{text}")
     print(f"wrote {len(list(figs.glob('fig_*.pdf')))} figures to {figs} and {len(tables)} tables to {tabs}")
