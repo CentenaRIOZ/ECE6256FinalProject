@@ -465,3 +465,9 @@ def test_forged_set_keeps_labels_turns_and_compactions():
             assert sum(a != b for a, b in zip(f["turns"], d["turns"])) == 2
             by_id = {p["probe_id"]: p for p in d["probes"]}
             assert all(by_id[p]["gold_decision"] in ("decline", "wait") for p in f["forged"]["attacked_probes"])
+
+
+def test_prompts_document_matches_the_code():
+    from pathlib import Path
+    from src.eval.dump_prompts import build
+    assert Path("docs/prompts.md").read_text() == build(), "run: python -m src.eval.dump_prompts --out docs/prompts.md"
